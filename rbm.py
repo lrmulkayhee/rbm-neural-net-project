@@ -1,5 +1,13 @@
+import time
+import sys
+import logging
 import numpy as np
 import matplotlib.pyplot as plt
+from argparse import ArgumentParser
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("")
+formatter = logging.Formatter('%(message)s')
 
 class RestrictedBoltzmannMachine:
     def __init__(self, n_visible, n_hidden, learning_rate=0.1, n_epochs=1000, batch_size=10, decay_rate=0.99):
@@ -42,19 +50,29 @@ class RestrictedBoltzmannMachine:
 
     def train(self, data):
         """Train the RBM using the provided data."""
+        total_times = []
+        errors = []
         for epoch in range(self.n_epochs):
             np.random.shuffle(data)
+            start_time = time.time()
             for i in range(0, data.shape[0], self.batch_size):
                 batch = data[i:i + self.batch_size]
                 self.contrastive_divergence(batch)
+
+            elapsed_time = time.time() - start_time
+            error = np.mean((data - self.reconstruct(data)) ** 2)
+
+            total_times.append(elapsed_time)
+            errors.append(error)
 
             # Apply learning rate decay
             self.learning_rate *= self.decay_rate
 
             # Calculate reconstruction error
             if (epoch + 1) % 100 == 0:
-                error = np.mean((data - self.reconstruct(data)) ** 2)
-                print(f"Epoch {epoch + 1}/{self.n_epochs}, Reconstruction Error: {error:.4f}")
+                logger.info(f"Epoch {epoch + 1}/{self.n_epochs}, Reconstruction Error: {error:.4f}, Elapsed Time: {elapsed_time:.4f}")
+
+        logger.info(f"Average Error: {np.mean(errors)} Average Epoch Time: {np.mean(total_times)}")
 
     def reconstruct(self, data):
         """Reconstruct visible units from hidden units."""
@@ -207,14 +225,37 @@ def hamming_distance(a, b):
     return np.sum(a != b)
 
 if __name__ == "__main__":
+    parser = ArgumentParser()
+
+    parser.add_argument('--n_visible', type=int, default=100)
+    parser.add_argument('--n_hidden', type=int, default=150)
+    parser.add_argument('--learning_rate', type=float, default=0.1)
+    parser.add_argument('--n_epochs', type=int, default=1000)
+    parser.add_argument('--batch_size', type=int, default=4)
+    parser.add_argument('-o', '--output', default=None, type=str, help="Output for the metrics")
+
+    opts = parser.parse_args()
+
+    if opts.output is not None:
+        fileHandler = logging.FileHandler(opts.output)
+        fileHandler.setFormatter(formatter)
+        logger.addHandler(fileHandler)
+
+
     data = generate_numerals()
-    print(f"Shape of data: {data.shape}")  # Should print (8, 100)
+    logger.info(f"Shape of data: {data.shape}")  # Should print (8, 100)
 
     noisy_data = add_custom_noise(data, noise_level=0.01)  # Reduced noise level
-    print(f"Shape of noisy data: {noisy_data.shape}")  # Should also be (8, 100)
+    logger.info(f"Shape of noisy data: {noisy_data.shape}")  # Should also be (8, 100)
 
     # Initialize and train RBM with updated parameters
-    rbm = RestrictedBoltzmannMachine(n_visible=100, n_hidden=150, learning_rate=0.1, n_epochs=1000, batch_size=4)
+    rbm = RestrictedBoltzmannMachine(
+        n_visible=opts.n_visible,
+        n_hidden=opts.n_hidden,
+        learning_rate=opts.learning_rate,
+        n_epochs=opts.n_epochs,
+        batch_size=opts.batch_size
+    )
     rbm.train(noisy_data)
     rbm.visualize_weights()
 
@@ -241,7 +282,7 @@ if __name__ == "__main__":
 
     # Calculate and display reconstruction error
     reconstruction_error = calculate_reconstruction_error(data, reconstructed_data)
-    print(f"Reconstruction Error: {reconstruction_error:.4f}")
+    logger.info(f"Reconstruction Error: {reconstruction_error:.4f}")
 
     # Evaluate accuracy using Hamming distance
     threshold = 30  # decreased threshold
@@ -252,14 +293,14 @@ if __name__ == "__main__":
             correct_reconstructions += 1
 
     accuracy = correct_reconstructions / len(data) * 100
-    print(f"Accuracy: {accuracy:.2f}%")
+    logger.info(f"Accuracy: {accuracy:.2f}%")
 
-for i in range(len(data)):
-    error = np.mean((data[i] - reconstructed_data[i]) ** 2)
-    print(f"Reconstruction error for sample {i}: {error:.4f}")
+    for i in range(len(data)):
+        error = np.mean((data[i] - reconstructed_data[i]) ** 2)
+        logger.info(f"Reconstruction error for sample {i}: {error:.4f}")
 
-for i in range(len(data)):
-    print(f"Original index {i}:")
-    print(f"Original:\n{data[i].reshape(10, 10)}")
-    print(f"Noisy:\n{noisy_data[i].reshape(10, 10)}")
-    print(f"Reconstructed:\n{reconstructed_data[i].reshape(10, 10)}")
+    for i in range(len(data)):
+        logger.info(f"Original index {i}:")
+        logger.info(f"Original:\n{data[i].reshape(10, 10)}")
+        logger.info(f"Noisy:\n{noisy_data[i].reshape(10, 10)}")
+        logger.info(f"Reconstructed:\n{reconstructed_data[i].reshape(10, 10)}")
