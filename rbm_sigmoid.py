@@ -30,21 +30,26 @@ class RestrictedBoltzmannMachine:
         """Sample binary states based on probabilities."""
         return (np.random.rand(*probs.shape) < probs).astype(np.float32)
 
-    def contrastive_divergence(self, data):
-        """Perform one step of regular contrastive divergence using sigmoid activation."""
+    def persistent_contrastive_divergence(self, data):
+        """Perform one step of persistent contrastive divergence using sigmoid activation."""
+        # Initialize persistent chain if it doesn't exist
+        if not hasattr(self, 'persistent_chain') or self.persistent_chain is None:
+            self.persistent_chain = self.sample_probabilities(self.sigmoid(np.dot(data, self.weights) + self.hidden_bias))
+
         # Positive phase
         pos_hidden_activations = np.dot(data, self.weights) + self.hidden_bias
         pos_hidden_probs = self.sigmoid(pos_hidden_activations)
-        pos_hidden_states = self.sample_probabilities(pos_hidden_probs)
         pos_associations = np.dot(data.T, pos_hidden_probs)
 
-        # Negative phase
-        neg_visible_activations = np.dot(pos_hidden_states, self.weights.T) + self.visible_bias
+        # Negative phase (using persistent chain)
+        neg_visible_activations = np.dot(self.persistent_chain, self.weights.T) + self.visible_bias
         neg_visible_probs = self.sigmoid(neg_visible_activations)
         neg_hidden_activations = np.dot(neg_visible_probs, self.weights) + self.hidden_bias
         neg_hidden_probs = self.sigmoid(neg_hidden_activations)
-        neg_hidden_states = self.sample_probabilities(neg_hidden_probs)
-        neg_associations = np.dot(neg_visible_probs.T, neg_hidden_states)
+        neg_associations = np.dot(neg_visible_probs.T, neg_hidden_probs)
+
+        # Update persistent chain
+        self.persistent_chain = self.sample_probabilities(neg_hidden_probs)
 
         # Update weights and biases
         self.weights += self.learning_rate * (pos_associations - neg_associations) / data.shape[0]
@@ -52,7 +57,7 @@ class RestrictedBoltzmannMachine:
         self.hidden_bias += self.learning_rate * np.mean(pos_hidden_probs - neg_hidden_probs, axis=0)
 
     def train(self, data):
-        """Train the RBM using the provided data."""
+        """Train the RBM using Persistent Contrastive Divergence."""
         total_times = []
         errors = []
         for epoch in range(self.n_epochs):
@@ -60,7 +65,7 @@ class RestrictedBoltzmannMachine:
             start_time = time.time()
             for i in range(0, data.shape[0], self.batch_size):
                 batch = data[i:i + self.batch_size]
-                self.contrastive_divergence(batch)
+                self.persistent_contrastive_divergence(batch)
 
             elapsed_time = time.time() - start_time
             error = np.mean((data - self.reconstruct(data)) ** 2)

@@ -49,6 +49,7 @@ class RestrictedBoltzmannMachine:
         self.visible_bias += self.learning_rate * np.mean(data - neg_visible_probs, axis=0)
         self.hidden_bias += self.learning_rate * np.mean(pos_hidden_probs - neg_hidden_probs, axis=0)
 
+
     def train(self, data):
         """Train the RBM using the provided data."""
         total_times = []
