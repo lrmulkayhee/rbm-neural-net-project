@@ -9,7 +9,7 @@ logger = logging.getLogger("")
 formatter = logging.Formatter('%(message)s')
 
 class RestrictedBoltzmannMachine:
-    def __init__(self, n_visible, n_hidden, learning_rate=0.1, n_epochs=1000, batch_size=10, decay_rate=0.99):
+    def __init__(self, n_visible, n_hidden, learning_rate=0.1, n_epochs=500, batch_size=10, decay_rate=0.99):
         self.n_visible = n_visible
         self.n_hidden = n_hidden
         self.learning_rate = learning_rate
