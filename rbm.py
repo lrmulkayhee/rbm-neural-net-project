@@ -9,31 +9,23 @@ logger = logging.getLogger("")
 formatter = logging.Formatter('%(message)s')
 
 class RestrictedBoltzmannMachine:
-    def __init__(self, n_visible, n_hidden, activation, learning_rate=0.1, n_epochs=1000, batch_size=10, decay_rate=0.99):
+    def __init__(self, n_visible, n_hidden, learning_rate=0.1, n_epochs=1000, batch_size=10, decay_rate=0.99):
         self.n_visible = n_visible
         self.n_hidden = n_hidden
         self.learning_rate = learning_rate
         self.n_epochs = n_epochs
         self.batch_size = batch_size
         self.decay_rate = decay_rate
-        self.activation = activation
 
         # Initialize weights and biases
         self.weights = np.random.uniform(-0.1, 0.1, (n_visible, n_hidden))
         self.visible_bias = np.zeros(n_visible)
         self.hidden_bias = np.zeros(n_hidden)
 
-    def activate(self, x):
-        """Apply the selected activation function."""
-        if self.activation == "sigmoid":
-            return 1 / (1 + np.exp(-x))
-        elif self.activation == "relu":
-            return np.maximum(0, x)
-        elif self.activation == "leaky_relu":
-            return np.where(x > 0, x, 0.01 * x)
-        else:
-            raise ValueError("Unsupported activation function")
-        
+    def relu(self, x):
+        """ReLU activation function."""
+        return np.maximum(0, x)
+
     def sample_probabilities(self, probs):
         """Sample binary states based on probabilities."""
         return (np.random.rand(*probs.shape) < probs).astype(np.float32)
@@ -41,13 +33,13 @@ class RestrictedBoltzmannMachine:
     def contrastive_divergence(self, data):
         """Perform one step of contrastive divergence."""
         # Positive phase
-        pos_hidden_probs = self.activate(np.dot(data, self.weights) + self.hidden_bias)
+        pos_hidden_probs = self.relu(np.dot(data, self.weights) + self.hidden_bias)
         pos_hidden_states = self.sample_probabilities(pos_hidden_probs)
         pos_associations = np.dot(data.T, pos_hidden_probs)
 
         # Negative phase
-        neg_visible_probs = self.activate(np.dot(pos_hidden_states, self.weights.T) + self.visible_bias)
-        neg_hidden_probs = self.activate(np.dot(neg_visible_probs, self.weights) + self.hidden_bias)
+        neg_visible_probs = self.relu(np.dot(pos_hidden_states, self.weights.T) + self.visible_bias)
+        neg_hidden_probs = self.relu(np.dot(neg_visible_probs, self.weights) + self.hidden_bias)
         neg_associations = np.dot(neg_visible_probs.T, neg_hidden_probs)
 
         # Update weights and biases
@@ -83,8 +75,8 @@ class RestrictedBoltzmannMachine:
 
     def reconstruct(self, data):
         """Reconstruct visible units from hidden units."""
-        hidden_probs = self.activate(np.dot(data, self.weights) + self.hidden_bias)
-        visible_probs = self.activate(np.dot(hidden_probs, self.weights.T) + self.visible_bias)
+        hidden_probs = self.relu(np.dot(data, self.weights) + self.hidden_bias)
+        visible_probs = self.relu(np.dot(hidden_probs, self.weights.T) + self.visible_bias)
         return visible_probs
 
     def visualize_weights(self):
@@ -248,45 +240,66 @@ if __name__ == "__main__":
         fileHandler.setFormatter(formatter)
         logger.addHandler(fileHandler)
 
+
     data = generate_numerals()
     logger.info(f"Shape of data: {data.shape}")  # Should print (8, 100)
 
     noisy_data = add_custom_noise(data, noise_level=0.01)  # Reduced noise level
     logger.info(f"Shape of noisy data: {noisy_data.shape}")  # Should also be (8, 100)
 
-    activations = ["sigmoid", "relu", "leaky_relu"]
-    results = []
+    # Initialize and train RBM with updated parameters
+    rbm = RestrictedBoltzmannMachine(
+        n_visible=opts.n_visible,
+        n_hidden=opts.n_hidden,
+        learning_rate=opts.learning_rate,
+        n_epochs=opts.n_epochs,
+        batch_size=opts.batch_size
+    )
+    rbm.train(noisy_data)
+    rbm.visualize_weights()
 
-    for activation in activations:
-        logger.info(f"Testing activation function: {activation}")
-        rbm = RestrictedBoltzmannMachine(
-            n_visible=opts.n_visible,
-            n_hidden=opts.n_hidden,
-            learning_rate=opts.learning_rate,
-            n_epochs=opts.n_epochs,
-            batch_size=opts.batch_size,
-            activation=activation
-        )
-        rbm.train(noisy_data)
-        reconstructed_data = rbm.reconstruct(noisy_data)
-        reconstructed_data = binarize_data(reconstructed_data)
+    # Visualize original, noisy, and reconstructed data
+    reconstructed_data = rbm.reconstruct(noisy_data)
+    reconstructed_data = binarize_data(reconstructed_data)
 
-        # Calculate reconstruction error
-        reconstruction_error = calculate_reconstruction_error(data, reconstructed_data)
+    fig, axes = plt.subplots(3, 8, figsize=(15, 8))
+    for i in range(8):
+        axes[0, i].imshow(data[i].reshape(10, 10), cmap='gray')
+        axes[0, i].set_title("Original")
+        axes[0, i].axis('off')
 
-        # Evaluate accuracy using Hamming distance
-        threshold = 30
-        correct_reconstructions = 0
-        for i in range(len(data)):
-            distance = hamming_distance(data[i], reconstructed_data[i])
-            if distance <= threshold:
-                correct_reconstructions += 1
+        axes[1, i].imshow(noisy_data[i].reshape(10, 10), cmap='gray')
+        axes[1, i].set_title("Noisy")
+        axes[1, i].axis('off')
 
-        accuracy = correct_reconstructions / len(data) * 100
-        results.append((activation, reconstruction_error, accuracy))
+        axes[2, i].imshow(reconstructed_data[i].reshape(10, 10), cmap='gray')
+        axes[2, i].set_title("Reconstructed")
+        axes[2, i].axis('off')
 
-    # Display results
-    logger.info("Activation Function Results:")
-    logger.info(f"{'Activation':<15} {'Reconstruction Error':<20} {'Accuracy (%)':<15}")
-    for activation, error, acc in results:
-        logger.info(f"{activation:<15} {error:<20.4f} {acc:<15.2f}")
+    plt.tight_layout()
+    plt.show()
+
+    # Calculate and display reconstruction error
+    reconstruction_error = calculate_reconstruction_error(data, reconstructed_data)
+    logger.info(f"Reconstruction Error: {reconstruction_error:.4f}")
+
+    # Evaluate accuracy using Hamming distance
+    threshold = 30  # decreased threshold
+    correct_reconstructions = 0
+    for i in range(len(data)):
+        distance = hamming_distance(data[i], reconstructed_data[i])
+        if distance <= threshold:
+            correct_reconstructions += 1
+
+    accuracy = correct_reconstructions / len(data) * 100
+    logger.info(f"Accuracy: {accuracy:.2f}%")
+
+    for i in range(len(data)):
+        error = np.mean((data[i] - reconstructed_data[i]) ** 2)
+        logger.info(f"Reconstruction error for sample {i}: {error:.4f}")
+
+    for i in range(len(data)):
+        logger.info(f"Original index {i}:")
+        logger.info(f"Original:\n{data[i].reshape(10, 10)}")
+        logger.info(f"Noisy:\n{noisy_data[i].reshape(10, 10)}")
+        logger.info(f"Reconstructed:\n{reconstructed_data[i].reshape(10, 10)}")
