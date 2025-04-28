@@ -41,13 +41,13 @@ class RestrictedBoltzmannMachine:
     def contrastive_divergence(self, data):
         """Perform one step of contrastive divergence."""
         # Positive phase
-        pos_hidden_probs = self.sigmoid(np.dot(data, self.weights) + self.hidden_bias)
+        pos_hidden_probs = self.activate(np.dot(data, self.weights) + self.hidden_bias)
         pos_hidden_states = self.sample_probabilities(pos_hidden_probs)
         pos_associations = np.dot(data.T, pos_hidden_probs)
 
         # Negative phase
-        neg_visible_probs = self.sigmoid(np.dot(pos_hidden_states, self.weights.T) + self.visible_bias)
-        neg_hidden_probs = self.sigmoid(np.dot(neg_visible_probs, self.weights) + self.hidden_bias)
+        neg_visible_probs = self.activate(np.dot(pos_hidden_states, self.weights.T) + self.visible_bias)
+        neg_hidden_probs = self.activate(np.dot(neg_visible_probs, self.weights) + self.hidden_bias)
         neg_associations = np.dot(neg_visible_probs.T, neg_hidden_probs)
 
         # Update weights and biases
@@ -83,8 +83,8 @@ class RestrictedBoltzmannMachine:
 
     def reconstruct(self, data):
         """Reconstruct visible units from hidden units."""
-        hidden_probs = self.sigmoid(np.dot(data, self.weights) + self.hidden_bias)
-        visible_probs = self.sigmoid(np.dot(hidden_probs, self.weights.T) + self.visible_bias)
+        hidden_probs = self.activate(np.dot(data, self.weights) + self.hidden_bias)
+        visible_probs = self.activate(np.dot(hidden_probs, self.weights.T) + self.visible_bias)
         return visible_probs
 
     def visualize_weights(self):
