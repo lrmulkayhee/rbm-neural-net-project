@@ -1,5 +1,4 @@
 import time
-import sys
 import logging
 import numpy as np
 import matplotlib.pyplot as plt
