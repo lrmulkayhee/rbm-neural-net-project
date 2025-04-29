@@ -26,7 +26,7 @@ class RestrictedBoltzmannMachine:
             'tanh': self.tanh,
         }
         self.activation = self.activation_fn[activation]
-        print(f"Activation: {activation}")
+        logger.info(f"Activation: {activation}")
 
         regularization_fn = {
             'normal': np.vectorize(lambda x: 0),
