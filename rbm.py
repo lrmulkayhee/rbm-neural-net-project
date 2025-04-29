@@ -9,7 +9,7 @@ logger = logging.getLogger("")
 formatter = logging.Formatter('%(message)s')
 
 class RestrictedBoltzmannMachine:
-    def __init__(self, n_visible, n_hidden, learning_rate=0.1, n_epochs=1000, batch_size=10, decay_rate=0.99):
+    def __init__(self, n_visible, n_hidden, learning_rate=0.1, n_epochs=1000, batch_size=10, decay_rate=0.99, activation='sigmoid'):
         self.n_visible = n_visible
         self.n_hidden = n_hidden
         self.learning_rate = learning_rate
@@ -17,14 +17,36 @@ class RestrictedBoltzmannMachine:
         self.batch_size = batch_size
         self.decay_rate = decay_rate
 
+        self.activation_fn = {
+            'relu': self.relu,
+            'leaky': self.leak_relu,
+            'sigmoid': self.sigmoid,
+            'tanh': self.tanh,
+        }
+        self.activation = self.activation_fn[activation]
+        print(f"Activation: {activation}")
+
         # Initialize weights and biases
         self.weights = np.random.uniform(-0.1, 0.1, (n_visible, n_hidden))
         self.visible_bias = np.zeros(n_visible)
         self.hidden_bias = np.zeros(n_hidden)
 
+    def relu(self, x):
+        """ReLU activation function."""
+        return np.maximum(x, 0)
+    
+    def leak_relu(self, x, a=0.01):
+        """Leak ReLU activation function"""
+        internal_func = np.vectorize(lambda val: val if val > 0 else a*val)
+        return internal_func(x)
+
     def sigmoid(self, x):
         """Sigmoid activation function."""
         return 1 / (1 + np.exp(-x))
+    
+    def tanh(self, x):
+        """Tanh activation function."""
+        return np.tanh(x)
 
     def sample_probabilities(self, probs):
         """Sample binary states based on probabilities."""
@@ -33,13 +55,13 @@ class RestrictedBoltzmannMachine:
     def contrastive_divergence(self, data):
         """Perform one step of contrastive divergence."""
         # Positive phase
-        pos_hidden_probs = self.sigmoid(np.dot(data, self.weights) + self.hidden_bias)
+        pos_hidden_probs = self.activation(np.dot(data, self.weights) + self.hidden_bias)
         pos_hidden_states = self.sample_probabilities(pos_hidden_probs)
         pos_associations = np.dot(data.T, pos_hidden_probs)
 
         # Negative phase
-        neg_visible_probs = self.sigmoid(np.dot(pos_hidden_states, self.weights.T) + self.visible_bias)
-        neg_hidden_probs = self.sigmoid(np.dot(neg_visible_probs, self.weights) + self.hidden_bias)
+        neg_visible_probs = self.activation(np.dot(pos_hidden_states, self.weights.T) + self.visible_bias)
+        neg_hidden_probs = self.activation(np.dot(neg_visible_probs, self.weights) + self.hidden_bias)
         neg_associations = np.dot(neg_visible_probs.T, neg_hidden_probs)
 
         # Update weights and biases
@@ -61,6 +83,8 @@ class RestrictedBoltzmannMachine:
             elapsed_time = time.time() - start_time
             error = np.mean((data - self.reconstruct(data)) ** 2)
 
+            
+
             total_times.append(elapsed_time)
             errors.append(error)
 
@@ -75,8 +99,8 @@ class RestrictedBoltzmannMachine:
 
     def reconstruct(self, data):
         """Reconstruct visible units from hidden units."""
-        hidden_probs = self.sigmoid(np.dot(data, self.weights) + self.hidden_bias)
-        visible_probs = self.sigmoid(np.dot(hidden_probs, self.weights.T) + self.visible_bias)
+        hidden_probs = self.activation(np.dot(data, self.weights) + self.hidden_bias)
+        visible_probs = self.activation(np.dot(hidden_probs, self.weights.T) + self.visible_bias)
         return visible_probs
 
     def visualize_weights(self):
@@ -232,6 +256,7 @@ if __name__ == "__main__":
     parser.add_argument('--n_epochs', type=int, default=1000)
     parser.add_argument('--batch_size', type=int, default=4)
     parser.add_argument('-o', '--output', default=None, type=str, help="Output for the metrics")
+    parser.add_argument('--activation', default='sigmoid', choices=['relu', 'leaky', 'sigmoid', 'tanh'])
 
     opts = parser.parse_args()
 
@@ -253,7 +278,8 @@ if __name__ == "__main__":
         n_hidden=opts.n_hidden,
         learning_rate=opts.learning_rate,
         n_epochs=opts.n_epochs,
-        batch_size=opts.batch_size
+        batch_size=opts.batch_size,
+        activation=opts.activation,
     )
     rbm.train(noisy_data)
     rbm.visualize_weights()
