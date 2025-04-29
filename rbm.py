@@ -9,7 +9,9 @@ logger = logging.getLogger("")
 formatter = logging.Formatter('%(message)s')
 
 class RestrictedBoltzmannMachine:
-    def __init__(self, n_visible, n_hidden, learning_rate=0.1, n_epochs=1000, batch_size=10, decay_rate=0.99, activation='sigmoid'):
+    def __init__(self, n_visible, n_hidden, learning_rate=0.1, n_epochs=1000,
+                 batch_size=10, decay_rate=0.99, activation='sigmoid',
+                 regularization='normal', reg_lambda=0.001):
         self.n_visible = n_visible
         self.n_hidden = n_hidden
         self.learning_rate = learning_rate
@@ -25,6 +27,14 @@ class RestrictedBoltzmannMachine:
         }
         self.activation = self.activation_fn[activation]
         print(f"Activation: {activation}")
+
+        regularization_fn = {
+            'normal': np.vectorize(lambda x: 0),
+            'l1': np.vectorize(lambda x: np.abs(x)),
+            'l2': np.vectorize(lambda x: x**2),
+        }
+        self.regularization = regularization_fn[regularization]
+        self.reg_lambda = reg_lambda
 
         # Initialize weights and biases
         self.weights = np.random.uniform(-0.1, 0.1, (n_visible, n_hidden))
@@ -83,7 +93,7 @@ class RestrictedBoltzmannMachine:
             elapsed_time = time.time() - start_time
             error = np.mean((data - self.reconstruct(data)) ** 2)
 
-            
+            error += self.reg_lambda * np.sum(self.regularization(self.weights))
 
             total_times.append(elapsed_time)
             errors.append(error)
@@ -257,6 +267,8 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', type=int, default=4)
     parser.add_argument('-o', '--output', default=None, type=str, help="Output for the metrics")
     parser.add_argument('--activation', default='sigmoid', choices=['relu', 'leaky', 'sigmoid', 'tanh'])
+    parser.add_argument('--regularization', default='normal', choices=['normal', 'l1', 'l2'])
+    parser.add_argument('--reg_lambda', default=0.001, type=float)
 
     opts = parser.parse_args()
 
@@ -280,6 +292,8 @@ if __name__ == "__main__":
         n_epochs=opts.n_epochs,
         batch_size=opts.batch_size,
         activation=opts.activation,
+        regularization=opts.regularization,
+        reg_lambda=opts.reg_lambda
     )
     rbm.train(noisy_data)
     rbm.visualize_weights()
