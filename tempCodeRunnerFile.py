@@ -2,111 +2,67 @@ import time
 import logging
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 from argparse import ArgumentParser
 
+# Adding a random seed at the start to set a uniform starting point for the random number generator. 
+np.random.seed(45)
+
+# --- Setup Logging ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("")
 formatter = logging.Formatter('%(message)s')
 
+# --- RBM Class ---
 class RestrictedBoltzmannMachine:
-    def __init__(self, n_visible, n_hidden, learning_rate=0.1, n_epochs=1000, batch_size=10, decay_rate=0.99):
+    def __init__(self, n_visible, n_hidden, learning_rate=0.1, n_epochs=500, batch_size=10, decay_rate=0.99):
         self.n_visible = n_visible
         self.n_hidden = n_hidden
         self.learning_rate = learning_rate
         self.n_epochs = n_epochs
         self.batch_size = batch_size
         self.decay_rate = decay_rate
-
-        # Initialize weights and biases
         self.weights = np.random.uniform(-0.1, 0.1, (n_visible, n_hidden))
         self.visible_bias = np.zeros(n_visible)
         self.hidden_bias = np.zeros(n_hidden)
 
     def sigmoid(self, x):
-        """Sigmoid activation function."""
         return 1 / (1 + np.exp(-x))
 
     def sample_probabilities(self, probs):
-        """Sample binary states based on probabilities."""
         return (np.random.rand(*probs.shape) < probs).astype(np.float32)
 
     def contrastive_divergence(self, data):
-        """Perform one step of contrastive divergence."""
-        # Positive phase
         pos_hidden_probs = self.sigmoid(np.dot(data, self.weights) + self.hidden_bias)
         pos_hidden_states = self.sample_probabilities(pos_hidden_probs)
         pos_associations = np.dot(data.T, pos_hidden_probs)
 
-        # Negative phase
         neg_visible_probs = self.sigmoid(np.dot(pos_hidden_states, self.weights.T) + self.visible_bias)
         neg_hidden_probs = self.sigmoid(np.dot(neg_visible_probs, self.weights) + self.hidden_bias)
         neg_associations = np.dot(neg_visible_probs.T, neg_hidden_probs)
 
-        # Update weights and biases
         self.weights += self.learning_rate * (pos_associations - neg_associations) / data.shape[0]
         self.visible_bias += self.learning_rate * np.mean(data - neg_visible_probs, axis=0)
         self.hidden_bias += self.learning_rate * np.mean(pos_hidden_probs - neg_hidden_probs, axis=0)
 
     def train(self, data):
-        """Train the RBM using the provided data."""
-        total_times = []
         errors = []
-
-        accuracies = []
-
         for epoch in range(self.n_epochs):
             np.random.shuffle(data)
-            start_time = time.time()
             for i in range(0, data.shape[0], self.batch_size):
                 batch = data[i:i + self.batch_size]
                 self.contrastive_divergence(batch)
-
-            elapsed_time = time.time() - start_time
             error = np.mean((data - self.reconstruct(data)) ** 2)
-
-            total_times.append(elapsed_time)
             errors.append(error)
-
-            # Apply learning rate decay
-            self.learning_rate *= self.decay_rate
-
-            # Calculate reconstruction error
-            if (epoch + 1) % 100 == 0:
-                logger.info(f"Epoch {epoch + 1}/{self.n_epochs}, Reconstruction Error: {error:.4f}, Elapsed Time: {elapsed_time:.4f}")
-
-            if (epoch + 1) % 10 == 0:  # every 10 epochs
-                reconstructed = binarize_data(self.reconstruct(data))
-                threshold = 30
-                correct = sum(hamming_distance(data[i], reconstructed[i]) <= threshold for i in range(len(data)))
-                accuracy = correct / len(data) * 100
-                accuracies.append(accuracy)
-
-        plt.plot(errors)
-        plt.title("Reconstruction Error Over Epochs")
-        plt.xlabel("Epoch")
-        plt.ylabel("Reconstruction Error")
-        plt.grid(True)
-        plt.show()
-        logger.info(f"Average Error: {np.mean(errors)} Average Epoch Time: {np.mean(total_times)}")
+        return errors
 
     def reconstruct(self, data):
-        """Reconstruct visible units from hidden units."""
         hidden_probs = self.sigmoid(np.dot(data, self.weights) + self.hidden_bias)
         visible_probs = self.sigmoid(np.dot(hidden_probs, self.weights.T) + self.visible_bias)
         return visible_probs
 
-    def visualize_weights(self):
-        """Visualize weights as a heatmap."""
-        plt.figure(figsize=(10, 8))
-        plt.imshow(self.weights, cmap='viridis', aspect='auto')
-        plt.colorbar(label="Weight Magnitude")
-        plt.title("Weight Heatmap")
-        plt.xlabel("Hidden Units")
-        plt.ylabel("Visible Units")
-        plt.show()
-
+# --- Helper Functions ---
 def generate_numerals():
-    """Generate 10x10 binary arrays representing the digits 0-7."""
     numerals = [
         # Digit 0
         np.array([
@@ -213,109 +169,85 @@ def generate_numerals():
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         ]),
     ]
-
-    # Flatten each 10x10 array into a 1D array of size 100
     flattened_numerals = [numeral.flatten() for numeral in numerals]
     return np.array(flattened_numerals)
 
 def add_custom_noise(data, noise_level=0.2):
-    noisy_data = data.copy()
     noise = np.random.binomial(1, noise_level, data.shape)
-    noisy_data = np.abs(noisy_data - noise)  # Flip bits based on noise
+    noisy_data = np.abs(data - noise)
     return noisy_data
 
-# Function to binarize the reconstructed data to ensure black and white output
 def binarize_data(data, threshold=0.5):
-    """Convert probabilities to binary values (0 or 1) based on a threshold."""
     return (data >= threshold).astype(np.float32)
 
-# Function to calculate reconstruction error
 def calculate_reconstruction_error(original, reconstructed):
-    """Calculate the mean squared error between original and reconstructed data."""
     return np.mean((original - reconstructed) ** 2)
 
-# Function to calculate Hamming distance
 def hamming_distance(a, b):
-    """Calculate the Hamming distance between two binary arrays."""
     return np.sum(a != b)
 
+# --- Main Script ---
 if __name__ == "__main__":
     parser = ArgumentParser()
-
-    parser.add_argument('--n_visible', type=int, default=100)
-    parser.add_argument('--n_hidden', type=int, default=150)
-    parser.add_argument('--learning_rate', type=float, default=0.1)
-    parser.add_argument('--n_epochs', type=int, default=1000)
-    parser.add_argument('--batch_size', type=int, default=4)
-    parser.add_argument('-o', '--output', default=None, type=str, help="Output for the metrics")
-
+    parser.add_argument('-o', '--output', default='sweep_results.csv', type=str, help="CSV Output for the metrics")
     opts = parser.parse_args()
 
-    if opts.output is not None:
-        fileHandler = logging.FileHandler(opts.output)
-        fileHandler.setFormatter(formatter)
-        logger.addHandler(fileHandler)
-
-
     data = generate_numerals()
-    logger.info(f"Shape of data: {data.shape}")  # Should print (8, 100)
+    logger.info(f"Original data shape: {data.shape}")
 
-    noisy_data = add_custom_noise(data, noise_level=0.1)  # Reduced noise level
-    logger.info(f"Shape of noisy data: {noisy_data.shape}")  # Should also be (8, 100)
+    n_hidden_list = [50, 70, 100, 120, 150]
+    batch_size_list = [2, 4, 8]
+    noise_level_list = [0.01, 0.05, 0.1]
 
-    # Initialize and train RBM with updated parameters
-    rbm = RestrictedBoltzmannMachine(
-        n_visible=opts.n_visible,
-        n_hidden=opts.n_hidden,
-        learning_rate=opts.learning_rate,
-        n_epochs=opts.n_epochs,
-        batch_size=opts.batch_size
-    )
-    rbm.train(noisy_data)
-    rbm.visualize_weights()
+    results = []
 
-    # Visualize original, noisy, and reconstructed data
-    reconstructed_data = rbm.reconstruct(noisy_data)
-    reconstructed_data = binarize_data(reconstructed_data)
+    for n_hidden in n_hidden_list:
+        for batch_size in batch_size_list:
+            for noise_level in noise_level_list:
+                logger.info(f"Running: Hidden={n_hidden}, Batch={batch_size}, Noise={noise_level}")
+                noisy_data = add_custom_noise(data, noise_level=noise_level)
+                rbm = RestrictedBoltzmannMachine(
+                    n_visible=100,
+                    n_hidden=n_hidden,
+                    learning_rate=0.1,
+                    n_epochs=500,
+                    batch_size=batch_size
+                )
+                start_time = time.time()
+                rbm.train(noisy_data)
+                elapsed_time = time.time() - start_time
 
-    fig, axes = plt.subplots(3, 8, figsize=(15, 8))
-    for i in range(8):
-        axes[0, i].imshow(data[i].reshape(10, 10), cmap='gray')
-        axes[0, i].set_title("Original")
-        axes[0, i].axis('off')
+                reconstructed = binarize_data(rbm.reconstruct(noisy_data))
+                error = calculate_reconstruction_error(data, reconstructed)
 
-        axes[1, i].imshow(noisy_data[i].reshape(10, 10), cmap='gray')
-        axes[1, i].set_title("Noisy")
-        axes[1, i].axis('off')
+                threshold = 30
+                correct = sum(hamming_distance(data[i], reconstructed[i]) <= threshold for i in range(len(data)))
+                accuracy = correct / len(data) * 100
 
-        axes[2, i].imshow(reconstructed_data[i].reshape(10, 10), cmap='gray')
-        axes[2, i].set_title("Reconstructed")
-        axes[2, i].axis('off')
+                results.append({
+                    'n_hidden': n_hidden,
+                    'batch_size': batch_size,
+                    'noise_level': noise_level,
+                    'final_error': round(error, 5),
+                    'accuracy(%)': round(accuracy, 2),
+                    'time_per_run(s)': round(elapsed_time, 2)
+                })
+
+    df = pd.DataFrame(results)
+    df.to_csv(opts.output, index=False)
+    print(df)
+
+    batch_sizes = df['batch_size'].unique()
+    fig, axs = plt.subplots(1, len(batch_sizes), figsize=(15, 5))
+
+    for idx, batch_size in enumerate(batch_sizes):
+        subset = df[(df['batch_size'] == batch_size) & (df['noise_level'] == 0.01)]
+        axs[idx].plot(subset['n_hidden'], subset['final_error'], marker='o')
+        axs[idx].set_title(f"Batch Size={batch_size}")
+        axs[idx].set_xlabel("Hidden Units")
+        axs[idx].set_ylabel("Final Error")
+        axs[idx].grid(True)
 
     plt.tight_layout()
+    plt.savefig("final_error_all_batches.png")
     plt.show()
-
-    # Calculate and display reconstruction error
-    reconstruction_error = calculate_reconstruction_error(data, reconstructed_data)
-    logger.info(f"Reconstruction Error: {reconstruction_error:.4f}")
-
-    # Evaluate accuracy using Hamming distance
-    threshold = 30  # decreased threshold
-    correct_reconstructions = 0
-    for i in range(len(data)):
-        distance = hamming_distance(data[i], reconstructed_data[i])
-        if distance <= threshold:
-            correct_reconstructions += 1
-
-    accuracy = correct_reconstructions / len(data) * 100
-    logger.info(f"Accuracy: {accuracy:.2f}%")
-
-    for i in range(len(data)):
-        error = np.mean((data[i] - reconstructed_data[i]) ** 2)
-        logger.info(f"Reconstruction error for sample {i}: {error:.4f}")
-
-    for i in range(len(data)):
-        logger.info(f"Original index {i}:")
-        logger.info(f"Original:\n{data[i].reshape(10, 10)}")
-        logger.info(f"Noisy:\n{noisy_data[i].reshape(10, 10)}")
-        logger.info(f"Reconstructed:\n{reconstructed_data[i].reshape(10, 10)}")
