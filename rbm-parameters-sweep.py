@@ -1,21 +1,51 @@
 import time
 import numpy as np
 import matplotlib.pyplot as plt
-import tkinter as tk
-from tkinter import Frame, LabelFrame
+import pandas as pd
+import logging
+from itertools import product
+from sklearn.metrics import mean_squared_error
 
+NOISE_LEVEL = 0.1
+THRESHOLD = 20
+
+# Adding a random seed at the start to set a uniform starting point for the random number generator.
+np.random.seed(46)
+
+# Logging setup
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("RBM Sweep")
+
+# Utility functions
+def add_custom_noise(data, noise_level=0.1):
+    noise = np.random.binomial(1, noise_level, data.shape)
+    return np.abs(data - noise)
+
+def binarize_data(data, threshold=0.5):
+    return (data >= threshold).astype(np.float32)
+
+def hamming_distance(a, b):
+    return np.sum(a != b)
+
+def calculate_accuracy(original, reconstructed, threshold=THRESHOLD):
+    correct = sum(hamming_distance(original[i], reconstructed[i]) <= threshold for i in range(len(original)))
+    return correct / len(original) * 100
+
+# RBM class
 class RestrictedBoltzmannMachine:
-    def __init__(self, n_visible, n_hidden, cd_k, learning_rate=0.1, n_epochs=1500, batch_size=4, decay_rate=0.99):
-        self.n_visible = n_visible
-        self.n_hidden = n_hidden
-        self.learning_rate = learning_rate
-        self.n_epochs = n_epochs
-        self.batch_size = batch_size
-        self.decay_rate = decay_rate
-        self.cd_k = cd_k
-        self.weights = np.random.uniform(-0.1, 0.1, (n_visible, n_hidden))
-        self.visible_bias = np.zeros(n_visible)
-        self.hidden_bias = np.zeros(n_hidden)
+    def __init__(self, config):
+        self.n_visible = config["n_visible"]
+        self.n_hidden = config["n_hidden"]
+        self.learning_rate = config["learning_rate"]
+        self.n_epochs = config["n_epochs"]
+        self.batch_size = config["batch_size"]
+        self.decay_rate = config["decay_rate"]
+        self.lambda_reg = config["lambda_reg"]
+        self.cd_k = config["cd_k"]
+
+        self.weights = np.random.uniform(-0.1, 0.1, (self.n_visible, self.n_hidden))
+        self.visible_bias = np.zeros(self.n_visible)
+        self.hidden_bias = np.zeros(self.n_hidden)
 
     def sigmoid(self, x):
         return 1 / (1 + np.exp(-x))
@@ -27,8 +57,10 @@ class RestrictedBoltzmannMachine:
         v0 = data
         h0_prob = self.sigmoid(np.dot(v0, self.weights) + self.hidden_bias)
         h0_sample = self.sample_probabilities(h0_prob)
+
         vk = v0.copy()
         hk = h0_sample.copy()
+
         for _ in range(self.cd_k):
             vk_prob = self.sigmoid(np.dot(hk, self.weights.T) + self.visible_bias)
             vk = self.sample_probabilities(vk_prob)
@@ -38,7 +70,7 @@ class RestrictedBoltzmannMachine:
         pos_associations = np.dot(v0.T, h0_prob)
         neg_associations = np.dot(vk.T, hk_prob)
 
-        self.weights += self.learning_rate * ((pos_associations - neg_associations) / data.shape[0])
+        self.weights += self.learning_rate * ((pos_associations - neg_associations) / data.shape[0] - self.lambda_reg * self.weights)
         self.visible_bias += self.learning_rate * np.mean(v0 - vk, axis=0)
         self.hidden_bias += self.learning_rate * np.mean(h0_prob - hk_prob, axis=0)
 
@@ -55,32 +87,7 @@ class RestrictedBoltzmannMachine:
         visible_probs = self.sigmoid(np.dot(hidden_probs, self.weights.T) + self.visible_bias)
         return visible_probs
 
-def add_custom_noise(data, noise_level=0.1):
-    noise = np.random.binomial(1, noise_level, data.shape)
-    return np.abs(data - noise)
-
-def binarize_data(data, threshold=0.5):
-    return (data >= threshold).astype(np.float32)
-
-def hamming_accuracy(ref_data, test_data, threshold):
-    correct = sum(np.sum(ref_data[i] != test_data[i]) <= threshold for i in range(len(ref_data)))
-    return (correct / len(ref_data)) * 100
-
-def visualize_original_noisy_reconstructed(data, noisy_data, reconstructed_data):
-    fig, axes = plt.subplots(3, 8, figsize=(15, 6))
-    for i in range(8):
-        axes[0, i].imshow(data[i].reshape(10, 10), cmap='gray')
-        axes[0, i].set_title("Original")
-        axes[0, i].axis('off')
-        axes[1, i].imshow(noisy_data[i].reshape(10, 10), cmap='gray')
-        axes[1, i].set_title("Noisy")
-        axes[1, i].axis('off')
-        axes[2, i].imshow(reconstructed_data[i].reshape(10, 10), cmap='gray')
-        axes[2, i].set_title("Reconstructed")
-        axes[2, i].axis('off')
-    plt.tight_layout()
-    plt.show()
-
+# Digits 0–7 as 10×10 binary arrays (flattened)
 def generate_numerals():
     numerals = [
         # Digit 0
@@ -191,83 +198,105 @@ def generate_numerals():
     flattened_numerals = [numeral.flatten() for numeral in numerals]
     return np.array(flattened_numerals)
 
-def run_rbm(hidden_units, epochs, batch_size, noise_level, learning_rate, threshold, cd_k,
-            final_error_label, accuracy_label, initial_accuracy_label, time_label):
-    data = generate_numerals()
-    noisy_data = add_custom_noise(data, noise_level=noise_level)
-    initial_accuracy = hamming_accuracy(data, noisy_data, threshold)
+# Sweep parameters
+sweep_params = {
+    "learning_rate": [0.1],
+    "cd_k": [3],
+    "n_hidden": [250],
+    "batch_size": [4],
+    "n_epochs": [1000],
+    "decay_rate": [1.0, 0.99, 0.95, 0.9, 0.8, 0.7, 0.6]  # Add decay rates to sweep
+}
 
-    rbm = RestrictedBoltzmannMachine(
-        n_visible=100,
-        n_hidden=hidden_units,
-        learning_rate=learning_rate,
-        n_epochs=epochs,
-        batch_size=batch_size,
-        cd_k=cd_k
-    )
-    start_time = time.time()
-    rbm.train(noisy_data)
-    elapsed_time = time.time() - start_time
+# Create parameter combinations
+combinations = list(product(
+    sweep_params["learning_rate"],
+    sweep_params["cd_k"],
+    sweep_params["n_hidden"],
+    sweep_params["batch_size"],
+    sweep_params["n_epochs"],
+    sweep_params["decay_rate"]
+))
 
-    reconstructed = binarize_data(rbm.reconstruct(noisy_data))
-    error = np.mean((data - reconstructed) ** 2)
-    accuracy = hamming_accuracy(data, reconstructed, threshold)
+# Sweep setup
+results = []
+base_config = {
+    "n_visible": 100,
+    "lambda_reg": 0.001
+}
 
-    visualize_original_noisy_reconstructed(data, noisy_data, reconstructed)
+data = generate_numerals()
+noisy_data = add_custom_noise(data, noise_level=NOISE_LEVEL)
 
-    initial_accuracy_label.config(text=f"Initial Accuracy (noisy vs. original): {initial_accuracy:.2f}%")
-    final_error_label.config(text=f"Final Reconstruction Error: {error:.5f}")
-    accuracy_label.config(text=f"Accuracy after RBM: {accuracy:.2f}%")
-    time_label.config(text=f"Time per Run: {elapsed_time:.2f} s")
+# Repeat sweep 5 times
+all_runs = []
+NUM_RUNS = 5
 
-# GUI
-root = tk.Tk()
-root.title("RBM Denoising with Adjustable Parameters")
-controls_frame = Frame(root)
-controls_frame.grid(row=0, column=0, padx=10, pady=10)
-result_frame = LabelFrame(root, text="Results", padx=10, pady=10)
-result_frame.grid(row=1, column=0, padx=10, pady=10, sticky="ew")
+for run in range(NUM_RUNS):
+    logger.info(f"Starting run {run + 1}/{NUM_RUNS}")
+    results = []
 
-# Variables
-hidden_units_var = tk.IntVar(value=200)
-epochs_var = tk.IntVar(value=1500)
-batch_size_var = tk.IntVar(value=4)
-noise_level_var = tk.DoubleVar(value=0.1)
-learning_rate_var = tk.DoubleVar(value=0.1)
-threshold_var = tk.IntVar(value=20)
-cd_k_var = tk.IntVar(value=3)
+    for lr, k, hidden, bs, epochs, decay in combinations:
+        config = base_config.copy()
+        config.update({
+            "learning_rate": lr,
+            "cd_k": k,
+            "n_hidden": hidden,
+            "batch_size": bs,
+            "n_epochs": epochs,
+            "decay_rate":decay
+        })
+        rbm = RestrictedBoltzmannMachine(config)
 
-# Controls
-slider_config = [
-    ("Hidden Units", hidden_units_var, 10, 300),
-    ("Epochs", epochs_var, 100, 2000),
-    ("Batch Size", batch_size_var, 1, 32),
-    ("Noise Level", noise_level_var, 0.0, 0.5, 0.01),
-    ("Learning Rate", learning_rate_var, 0.001, 1.0, 0.01),
-    ("Hamming Distance Threshold", threshold_var, 0, 100),
-    ("CD-k Value", cd_k_var, 1, 10)
-]
+        start_time = time.time()
+        rbm.train(noisy_data)
+        training_time = time.time() - start_time
 
-for i, (label, var, frm, to, *res) in enumerate(slider_config):
-    tk.Label(controls_frame, text=label).grid(row=i, column=0, sticky='w')
-    tk.Scale(controls_frame, from_=frm, to=to, resolution=res[0] if res else 1,
-             orient='horizontal', variable=var, length=300).grid(row=i, column=1)
+        recon = binarize_data(rbm.reconstruct(noisy_data))
+        acc = calculate_accuracy(data, recon)
 
-# Results
-initial_accuracy_label = tk.Label(result_frame, text="Initial Accuracy (noisy vs. original): ")
-initial_accuracy_label.pack(anchor='w')
-final_error_label = tk.Label(result_frame, text="Final Reconstruction Error: ")
-final_error_label.pack(anchor='w')
-accuracy_label = tk.Label(result_frame, text="Accuracy after RBM: ")
-accuracy_label.pack(anchor='w')
-time_label = tk.Label(result_frame, text="Time per Run: ")
-time_label.pack(anchor='w')
+        results.append({
+            "run": run + 1,
+            "learning_rate": lr,
+            "cd_k": k,
+            "n_hidden": hidden,
+            "batch_size": bs,
+            "n_epochs": epochs,
+            "accuracy": acc,
+            "decay_rate":decay,
+            "training_time_sec": training_time
+        })
 
-# Run Button
-tk.Button(root, text='Run RBM', command=lambda: run_rbm(
-    hidden_units_var.get(), epochs_var.get(), batch_size_var.get(),
-    noise_level_var.get(), learning_rate_var.get(), threshold_var.get(),
-    cd_k_var.get(), final_error_label, accuracy_label, initial_accuracy_label, time_label
-)).grid(row=2, column=0, pady=10)
+    run_df = pd.DataFrame(results)
+    all_runs.append(run_df)
 
-root.mainloop()
+# Combine all results
+final_df = pd.concat(all_runs, ignore_index=True)
+final_df.to_csv("sweep_results_multiple_runs.csv", index=False)
+
+
+plt.figure(figsize=(10, 6))
+for run in range(1, NUM_RUNS + 1):
+    subset = final_df[final_df["run"] == run]
+    plt.plot(subset["decay_rate"], subset["accuracy"], marker='o', label=f"Run {run}")
+plt.title("Decay Rate vs Accuracy\n(CD-3, LR=0.1, Hidden=250, Batch=4, Epochs=1000)")
+plt.xlabel("Decay Rate")
+plt.ylabel("Accuracy (%)")
+plt.grid(True)
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+
+plt.figure(figsize=(10, 6))
+for run in range(1, NUM_RUNS + 1):
+    subset = final_df[final_df["run"] == run]
+    plt.plot(subset["decay_rate"], subset["training_time_sec"], marker='o', label=f"Run {run}")
+plt.title("Decay Rate vs Training Time\n(CD-3, LR=0.1, Hidden=250, Batch=4, Epochs=1000)")
+plt.xlabel("Decay Rate")
+plt.ylabel("Training Time (sec)")
+plt.grid(True)
+plt.legend()
+plt.tight_layout()
+plt.show()
+
