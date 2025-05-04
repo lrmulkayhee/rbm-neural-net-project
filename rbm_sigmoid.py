@@ -36,7 +36,7 @@ class RestrictedBoltzmannMachine:
         hidden_term = -np.sum(np.log(1 + np.exp(np.dot(data, self.weights) + self.hidden_bias)), axis=1)
         return np.mean(vb_term + hidden_term)
 
-    def persistent_contrastive_divergence(self, data, momentum=0.5):
+    def persistent_contrastive_divergence(self, data, momentum=0.5, l2_penalty=0.0002):
         """Perform one step of persistent contrastive divergence using sigmoid activation and momentum."""
         # Reinitialize persistent chain if its shape does not match the current batch size
         if not hasattr(self, 'persistent_chain') or self.persistent_chain.shape[0] != data.shape[0]:
@@ -68,6 +68,9 @@ class RestrictedBoltzmannMachine:
         visible_bias_gradient = np.mean(data - neg_visible_probs, axis=0)
         hidden_bias_gradient = np.mean(pos_hidden_probs - neg_hidden_probs, axis=0)
 
+        # Apply L2 regularization to the weight gradient
+        weight_gradient -= l2_penalty * self.weights
+
         # Update velocities
         self.velocity_weights = momentum * self.velocity_weights + self.learning_rate * weight_gradient
         self.velocity_visible_bias = momentum * self.velocity_visible_bias + self.learning_rate * visible_bias_gradient
@@ -78,13 +81,15 @@ class RestrictedBoltzmannMachine:
         self.visible_bias += self.velocity_visible_bias
         self.hidden_bias += self.velocity_hidden_bias
 
-    def train(self, data, validation_data=None, monitor_interval=10):
-        """Train the RBM using the provided data and monitor overfitting."""
+    def train(self, data, validation_data=None, monitor_interval=10, patience=20):
+        """Train the RBM using the provided data and monitor overfitting with early stopping."""
         total_times = []
         errors = []
         training_subset = data[:min(100, len(data))]  # Use a fixed subset of training data for monitoring
 
         momentum = 0.5  # Initial momentum
+        best_val_free_energy = float('inf')  # Initialize best validation free energy
+        epochs_without_improvement = 0  # Counter for early stopping
 
         for epoch in range(self.n_epochs):
             # Increase momentum after 20% of training
@@ -114,6 +119,19 @@ class RestrictedBoltzmannMachine:
                     logger.info(f"Epoch {epoch + 1}/{self.n_epochs}, Train Free Energy: {train_free_energy:.4f}, "
                                 f"Validation Free Energy: {val_free_energy:.4f}")
                     logger.info(f"Free Energy Gap: {val_free_energy - train_free_energy:.4f}")
+
+                    # Check for improvement in validation free energy
+                    if val_free_energy < best_val_free_energy:
+                        best_val_free_energy = val_free_energy
+                        epochs_without_improvement = 0  # Reset counter
+                    else:
+                        epochs_without_improvement += 1
+
+                    # Early stopping condition
+                    if epochs_without_improvement >= patience:
+                        logger.info(f"Early stopping triggered at epoch {epoch + 1}. "
+                                    f"Best Validation Free Energy: {best_val_free_energy:.4f}")
+                        break
 
                 # Visualize diagnostics
                 if (epoch + 1) % 100 == 0:
