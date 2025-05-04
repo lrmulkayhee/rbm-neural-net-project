@@ -29,12 +29,24 @@ class RestrictedBoltzmannMachine:
     def sample_probabilities(self, probs):
         """Sample binary states based on probabilities."""
         return (np.random.rand(*probs.shape) < probs).astype(np.float32)
+    
+    def free_energy(self, data):
+        """Compute the free energy of the given data."""
+        vb_term = -np.dot(data, self.visible_bias)
+        hidden_term = -np.sum(np.log(1 + np.exp(np.dot(data, self.weights) + self.hidden_bias)), axis=1)
+        return np.mean(vb_term + hidden_term)
 
-    def persistent_contrastive_divergence(self, data):
-        """Perform one step of persistent contrastive divergence using sigmoid activation."""
-        # Initialize persistent chain if it doesn't exist
-        if not hasattr(self, 'persistent_chain') or self.persistent_chain is None:
+    def persistent_contrastive_divergence(self, data, momentum=0.5):
+        """Perform one step of persistent contrastive divergence using sigmoid activation and momentum."""
+        # Reinitialize persistent chain if its shape does not match the current batch size
+        if not hasattr(self, 'persistent_chain') or self.persistent_chain.shape[0] != data.shape[0]:
             self.persistent_chain = self.sample_probabilities(self.sigmoid(np.dot(data, self.weights) + self.hidden_bias))
+
+        # Initialize velocity terms if they don't exist
+        if not hasattr(self, 'velocity_weights'):
+            self.velocity_weights = np.zeros_like(self.weights)
+            self.velocity_visible_bias = np.zeros_like(self.visible_bias)
+            self.velocity_hidden_bias = np.zeros_like(self.hidden_bias)
 
         # Positive phase
         pos_hidden_activations = np.dot(data, self.weights) + self.hidden_bias
@@ -46,26 +58,44 @@ class RestrictedBoltzmannMachine:
         neg_visible_probs = self.sigmoid(neg_visible_activations)
         neg_hidden_activations = np.dot(neg_visible_probs, self.weights) + self.hidden_bias
         neg_hidden_probs = self.sigmoid(neg_hidden_activations)
-        neg_associations = np.dot(neg_visible_probs.T, neg_hidden_probs)
+        neg_associations = np.dot(neg_visible_probs.T, neg_hidden_probs)  # Corrected from eg_associations
 
         # Update persistent chain
         self.persistent_chain = self.sample_probabilities(neg_hidden_probs)
 
-        # Update weights and biases
-        self.weights += self.learning_rate * (pos_associations - neg_associations) / data.shape[0]
-        self.visible_bias += self.learning_rate * np.mean(data - neg_visible_probs, axis=0)
-        self.hidden_bias += self.learning_rate * np.mean(pos_hidden_probs - neg_hidden_probs, axis=0)
+        # Compute gradients
+        weight_gradient = (pos_associations - neg_associations) / data.shape[0]  # Corrected variable
+        visible_bias_gradient = np.mean(data - neg_visible_probs, axis=0)
+        hidden_bias_gradient = np.mean(pos_hidden_probs - neg_hidden_probs, axis=0)
 
-    def train(self, data):
-        """Train the RBM using Persistent Contrastive Divergence."""
+        # Update velocities
+        self.velocity_weights = momentum * self.velocity_weights + self.learning_rate * weight_gradient
+        self.velocity_visible_bias = momentum * self.velocity_visible_bias + self.learning_rate * visible_bias_gradient
+        self.velocity_hidden_bias = momentum * self.velocity_hidden_bias + self.learning_rate * hidden_bias_gradient
+
+        # Update weights and biases using velocities
+        self.weights += self.velocity_weights
+        self.visible_bias += self.velocity_visible_bias
+        self.hidden_bias += self.velocity_hidden_bias
+
+    def train(self, data, validation_data=None, monitor_interval=10):
+        """Train the RBM using the provided data and monitor overfitting."""
         total_times = []
         errors = []
+        training_subset = data[:min(100, len(data))]  # Use a fixed subset of training data for monitoring
+
+        momentum = 0.5  # Initial momentum
+
         for epoch in range(self.n_epochs):
+            # Increase momentum after 20% of training
+            if epoch == int(self.n_epochs * 0.2):
+                momentum = 0.9
+
             np.random.shuffle(data)
             start_time = time.time()
             for i in range(0, data.shape[0], self.batch_size):
                 batch = data[i:i + self.batch_size]
-                self.persistent_contrastive_divergence(batch)
+                self.persistent_contrastive_divergence(batch, momentum=momentum)
 
             elapsed_time = time.time() - start_time
             error = np.mean((data - self.reconstruct(data)) ** 2)
@@ -76,7 +106,23 @@ class RestrictedBoltzmannMachine:
             # Apply learning rate decay
             self.learning_rate *= self.decay_rate
 
-            # Calculate reconstruction error
+            # Monitor overfitting and visualize diagnostics every few epochs
+            if (epoch + 1) % monitor_interval == 0:
+                if validation_data is not None:
+                    train_free_energy = self.free_energy(training_subset)
+                    val_free_energy = self.free_energy(validation_data)
+                    logger.info(f"Epoch {epoch + 1}/{self.n_epochs}, Train Free Energy: {train_free_energy:.4f}, "
+                                f"Validation Free Energy: {val_free_energy:.4f}")
+                    logger.info(f"Free Energy Gap: {val_free_energy - train_free_energy:.4f}")
+
+                # Visualize diagnostics
+                if (epoch + 1) % 100 == 0:
+                    logger.info(f"Epoch {epoch + 1}/{self.n_epochs}: Visualizing diagnostics...")
+                    self.plot_histograms()
+                    self.visualize_receptive_fields()
+                    self.visualize_hidden_activations(data[:self.batch_size])
+
+            # Log reconstruction error
             if (epoch + 1) % 100 == 0:
                 logger.info(f"Epoch {epoch + 1}/{self.n_epochs}, Reconstruction Error: {error:.4f}, Elapsed Time: {elapsed_time:.4f}")
 
@@ -87,7 +133,7 @@ class RestrictedBoltzmannMachine:
         hidden_probs = self.sigmoid(np.dot(data, self.weights) + self.hidden_bias)
         visible_probs = self.sigmoid(np.dot(hidden_probs, self.weights.T) + self.visible_bias)
         return visible_probs
-
+    
     def visualize_weights(self):
         """Visualize weights as a heatmap."""
         plt.figure(figsize=(10, 8))
@@ -96,6 +142,60 @@ class RestrictedBoltzmannMachine:
         plt.title("Weight Heatmap")
         plt.xlabel("Hidden Units")
         plt.ylabel("Visible Units")
+        plt.show()
+
+    def plot_histograms(self):
+        """Plot histograms of weights, biases, and their increments."""
+        plt.figure(figsize=(12, 8))
+
+        # Histogram of weights
+        plt.subplot(2, 2, 1)
+        plt.hist(self.weights.flatten(), bins=50, color='blue', alpha=0.7)
+        plt.title("Weights Histogram")
+        plt.xlabel("Weight Value")
+        plt.ylabel("Frequency")
+
+        # Histogram of visible biases
+        plt.subplot(2, 2, 2)
+        plt.hist(self.visible_bias, bins=50, color='green', alpha=0.7)
+        plt.title("Visible Biases Histogram")
+        plt.xlabel("Bias Value")
+        plt.ylabel("Frequency")
+
+        # Histogram of hidden biases
+        plt.subplot(2, 2, 3)
+        plt.hist(self.hidden_bias, bins=50, color='red', alpha=0.7)
+        plt.title("Hidden Biases Histogram")
+        plt.xlabel("Bias Value")
+        plt.ylabel("Frequency")
+
+        plt.tight_layout()
+        plt.show()
+
+    def visualize_receptive_fields(self):
+        """Visualize the receptive fields of the hidden units."""
+        num_hidden = self.weights.shape[1]
+        grid_size = int(np.ceil(np.sqrt(num_hidden)))  # Arrange receptive fields in a square grid
+
+        plt.figure(figsize=(10, 10))
+        for i in range(num_hidden):
+            plt.subplot(grid_size, grid_size, i + 1)
+            plt.imshow(self.weights[:, i].reshape(int(np.sqrt(self.n_visible)), -1), cmap='gray', vmin=-1, vmax=1)
+            plt.axis('off')
+        plt.suptitle("Receptive Fields of Hidden Units", fontsize=16)
+        plt.tight_layout()
+        plt.show()
+
+    def visualize_hidden_activations(self, data):
+        """Visualize the activations of hidden units for a single mini-batch."""
+        hidden_probs = self.sigmoid(np.dot(data, self.weights) + self.hidden_bias)
+
+        plt.figure(figsize=(10, 6))
+        plt.imshow(hidden_probs, cmap='gray', aspect='auto', vmin=0, vmax=1)
+        plt.colorbar(label="Activation Probability")
+        plt.title("Hidden Unit Activations")
+        plt.xlabel("Hidden Units")
+        plt.ylabel("Training Cases")
         plt.show()
 
 def generate_numerals():
@@ -249,6 +349,10 @@ if __name__ == "__main__":
     data = generate_numerals()
     logger.info(f"Shape of data: {data.shape}")  # Should print (8, 100)
 
+    # Split data into training and validation sets
+    validation_data = data[:2]  # Use the first 2 samples as validation data
+    data = data[2:]  # Use the remaining samples as training data
+
     noisy_data = add_custom_noise(data, noise_level=0.01)  # Reduced noise level
     logger.info(f"Shape of noisy data: {noisy_data.shape}")  # Should also be (8, 100)
 
@@ -260,15 +364,15 @@ if __name__ == "__main__":
         n_epochs=opts.n_epochs,
         batch_size=opts.batch_size
     )
-    rbm.train(noisy_data)
+    rbm.train(noisy_data, validation_data=validation_data, monitor_interval=10)
     rbm.visualize_weights()
 
    # Visualize original, noisy, and reconstructed data
     reconstructed_data = rbm.reconstruct(noisy_data)
     reconstructed_data = binarize_data(reconstructed_data)
 
-    fig, axes = plt.subplots(3, 8, figsize=(15, 8))
-    for i in range(8):
+    fig, axes = plt.subplots(3, len(data), figsize=(15, 8))  # Adjust the number of columns to match the data size
+    for i in range(len(data)):  # Iterate over the actual size of the data
         axes[0, i].imshow(data[i].reshape(10, 10), cmap='gray')
         axes[0, i].set_title("Original")
         axes[0, i].axis('off')
