@@ -61,8 +61,8 @@ class RestrictedBoltzmannMachine:
         """Sample binary states based on probabilities."""
         return (np.random.rand(*probs.shape) < probs).astype(np.float32)
 
-    def contrastive_divergence(self, data):
-        """Perform one step of contrastive divergence."""
+    def contrastive_divergence_with_leaky_relu(self, data):
+        """Perform one step of adaptive contrastive divergence using ReLU activations."""
         # Positive phase
         pos_hidden_probs = self.activation(np.dot(data, self.weights) + self.hidden_bias)
         pos_hidden_states = self.sample_probabilities(pos_hidden_probs)
@@ -78,6 +78,7 @@ class RestrictedBoltzmannMachine:
         self.visible_bias += self.learning_rate * np.mean(data - neg_visible_probs, axis=0)
         self.hidden_bias += self.learning_rate * np.mean(pos_hidden_probs - neg_hidden_probs, axis=0)
 
+
     def train(self, data):
         """Train the RBM using the provided data."""
         total_times = []
@@ -87,7 +88,7 @@ class RestrictedBoltzmannMachine:
             start_time = time.time()
             for i in range(0, data.shape[0], self.batch_size):
                 batch = data[i:i + self.batch_size]
-                self.contrastive_divergence(batch)
+                self.contrastive_divergence_with_leaky_relu(batch)
 
             elapsed_time = time.time() - start_time
             error = np.mean((data - self.reconstruct(data)) ** 2)
