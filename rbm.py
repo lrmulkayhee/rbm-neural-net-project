@@ -21,7 +21,7 @@ class RestrictedBoltzmannMachine:
 
         self.activation_fn = {
             'relu': self.relu,
-            'leaky': self.leak_relu,
+            'leaky': self.leaky_relu,
             'sigmoid': self.sigmoid,
             'tanh': self.tanh,
         }
@@ -44,8 +44,8 @@ class RestrictedBoltzmannMachine:
         """ReLU activation function."""
         return np.maximum(x, 0)
     
-    def leak_relu(self, x, a=0.01):
-        """Leak ReLU activation function"""
+    def leaky_relu(self, x, a=0.01):
+        """Leaky ReLU activation function"""
         internal_func = np.vectorize(lambda val: val if val > 0 else a*val)
         return internal_func(x)
 
