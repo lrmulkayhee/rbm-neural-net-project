@@ -291,7 +291,7 @@ def hamming_distance(a, b):
     """
     return np.sum(a != b)
 
-def get_accuracy(data, reconstructed_data, threshold=30):
+def get_accuracy(data, reconstructed_data, threshold=20):
     """
     Calculate the accuracy of the reconstructed data compared to the original data.
     """
@@ -446,7 +446,7 @@ if __name__ == "__main__":
     parser.add_argument('-o', '--output', default=None, type=str, help="Output for the metrics")
     parser.add_argument('--activation', default='sigmoid', choices=['relu', 'leaky', 'sigmoid', 'tanh'])
     parser.add_argument('--regularization', default='l2', choices=['normal', 'l1', 'l2'])
-    parser.add_argument('--reg_lambda', default=0.001, type=float)
+    parser.add_argument('--reg_lambda', default=0.0005, type=float)
 
     opts = parser.parse_args()
 
@@ -460,63 +460,77 @@ if __name__ == "__main__":
     labels = np.arange(len(data))  # True labels for the numerals
     noise_levels = np.arange(0.0, 1.0, 0.1)
 
+    # Initialize metrics storage
     errors = []
-    accs = []
-    variances = []
-    free_energies = []
+    prediction_accuracies = []
+    reconstruction_variances = []
+    free_energy_gaps = []
 
     # Process each noise level
     for noise_level in noise_levels:
+        logger.info(f"Processing noise level: {noise_level}")
+
+        # Generate noisy data
         noisy_data, indices = generate_noisy_data(data, noise_level)
+
+        # Train RBM
         rbm = train_rbm(noisy_data, opts)
+
+        # Reconstruct data
         reconstructed_data = reconstruct_data(rbm, noisy_data, indices)
 
-        # Predict labels for reconstructed data
+        # Predict labels for reconstructed data using Hamming distance
         predicted_labels = []
         for reconstructed in reconstructed_data:
             distances = [hamming_distance(reconstructed, numeral) for numeral in data]
             predicted_labels.append(np.argmin(distances))
 
-        # Sort reconstructed data and predicted labels to match the original order
-        sorted_reconstructed_data = [reconstructed_data[i] for i in indices]
-        sorted_predicted_labels = [predicted_labels[i] for i in indices]
+        # Sort reconstructed data and original data by predicted labels
+        sorted_indices = np.argsort(predicted_labels)
+        sorted_reconstructed_data = [reconstructed_data[i] for i in sorted_indices]
+        sorted_data_by_prediction = [data[i] for i in sorted_indices]
+        sorted_reconstructed_data_by_prediction = [reconstructed_data[i] for i in sorted_indices]
+        sorted_labels_by_prediction = [predicted_labels[i] for i in sorted_indices]
 
-        error, acc, var, free_energy = calculate_metrics(data, sorted_reconstructed_data, rbm)
+        # Calculate metrics
+        error, reconstruction_accuracy, variance, free_energy_gap = calculate_metrics(data, reconstructed_data, rbm)
+        correct_predictions = sum(1 for i in range(len(labels)) if sorted_labels_by_prediction[i] == labels[i])
+        prediction_accuracy = (correct_predictions / len(labels)) * 100
 
         # Store metrics
         errors.append(error)
-        accs.append(acc)
-        variances.append(var)
-        free_energies.append(free_energy)
+        prediction_accuracies.append(prediction_accuracy)
+        reconstruction_variances.append(variance)
+        free_energy_gaps.append(free_energy_gap)
 
-        # Display aligned original and reconstructed data with predicted labels in a plot
+        # Log metrics
+        logger.info(f"Noise Level: {noise_level}")
+        logger.info(f"Reconstruction Error: {error}")
+        logger.info(f"Prediction Accuracy: {prediction_accuracy}%")
+        logger.info(f"Reconstruction Variance: {variance}")
+        logger.info(f"Free Energy Gap: {free_energy_gap}")
+
+
+        # Display original and reconstructed data in order of predicted labels
         fig, axs = plt.subplots(len(data), 2, figsize=(10, len(data) * 3))
         for i in range(len(data)):
             axs[i, 0].imshow(data[i].reshape(10, 10), cmap='gray')
-            axs[i, 0].set_title(f"Original (Label: {labels[i]})")
+            axs[i, 0].set_title(f"Original (Label: {i})")
             axs[i, 0].axis('off')
 
-            axs[i, 1].imshow(sorted_reconstructed_data[i].reshape(10, 10), cmap='gray')
-            axs[i, 1].set_title(f"Reconstructed (Predicted: {sorted_predicted_labels[i]})")
+            axs[i, 1].imshow(sorted_reconstructed_data_by_prediction[i].reshape(10, 10), cmap='gray')
+            axs[i, 1].set_title(f"Reconstructed (Predicted: {sorted_labels_by_prediction[i]})")
             axs[i, 1].axis('off')
 
         plt.tight_layout()
         plt.show()
 
-        logger.info(f"Noise Level: {noise_level}")
-        logger.info(f"Reconstruction Error: {error}")
-        logger.info(f"Prediction Accuracy: {acc}%")
-        hamming_accuracy = (sum(1 for i in range(len(data)) if hamming_distance(data[i], sorted_reconstructed_data[i]) == 0) / len(data)) * 100
-        logger.info(f"Hamming Distance Accuracy: {hamming_accuracy}%")
-
     # Plot metrics
-    plot_metrics(noise_levels, errors, accs, variances, free_energies)
+    plot_metrics(noise_levels, errors, prediction_accuracies, reconstruction_variances, free_energy_gaps)
 
     # Summarize results
     logger.info("Summary of Results:")
-    logger.info(f"Reconstruction Errors: {errors}")
-    logger.info(f"Accuracies: {accs}")
-    logger.info(f"Variances: {variances}")
-    logger.info(f"Free Energy Gaps: {free_energies}")
-
-
+    logger.info(f"Average Reconstruction Error: {np.mean(errors):.4f}")
+    logger.info(f"Average Prediction Accuracy: {np.mean(prediction_accuracies):.2f}%")
+    logger.info(f"Average Reconstruction Variance: {np.mean(reconstruction_variances):.4f}")
+    logger.info(f"Average Free Energy Gap: {np.mean(free_energy_gaps):.4f}")
