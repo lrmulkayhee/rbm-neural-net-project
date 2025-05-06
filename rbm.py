@@ -151,7 +151,6 @@ def generate_numerals():
     numerals = [
         # Digit representations (0-7)
         # Each digit is a 10x10 binary array
-        [
             # Digit 0
             np.array([
             [0, 1, 1, 1, 1, 1, 1, 1, 0, 0],
@@ -256,11 +255,11 @@ def generate_numerals():
             [1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             ]),
-        ]
     ]
 
     # Flatten each 10x10 array into a 1D array of size 100
-    return np.array([numeral.flatten() for numeral in numerals])
+    flatten_numerals = [numeral.flatten() for numeral in numerals]
+    return np.array(flatten_numerals)
 
 
 def add_custom_noise(data, noise_level=0.2):
