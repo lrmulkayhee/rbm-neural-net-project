@@ -10,9 +10,9 @@ The purpose of this project is to reconstruct noisy numeral images using an RBM.
 
 ## Key Results
 
-- Achieved a reconstruction accuracy of __________________ for noisy numeral images with a noise level of ________%.
-- Reconstruction error stabilized at ______ during training, indicating effective learning.
-- Visual inspection of reconstructed images showed that the RBM successfully recovered key numeral patterns, though some reconstructions were imperfect.
+- **Prediction Accuracy**: Achieved a prediction accuracy of **100%** for noisy numeral images with a noise level of **0.0% to 0.3%**.
+- **Reconstruction Error**: The reconstruction error stabilized at **0.3260** during training for a noise level of **0.0**, indicating effective learning.
+- **Visual Inspection**: Reconstructed images demonstrated that the RBM successfully recovered key numeral patterns for low noise levels, though performance degraded at higher noise levels.
 
 ## Significance
 
@@ -38,14 +38,15 @@ The Restricted Boltzmann Machine (RBM) used in this project has:
 
 #### Training Methodology
 
+### Training Methodology
+
 The RBM is trained using the **Contrastive Divergence (CD)** algorithm, which approximates the gradient of the log-likelihood. Key training parameters include:
 
-Key training parameters include:
-- **Activation Function**: 
-- **Number of Epochs**: ________ epochs to ensure convergence.
-- **Learning Rate**: ______, with a decay rate of ______ to gradually reduce the step size.
-- **Batch Size**: ______, allowing efficient updates while leveraging small batches of data.
-- **Regularization**: 
+- **Activation Function**: Sigmoid
+- **Number of Epochs**: 1250 epochs to ensure convergence
+- **Learning Rate**: 0.1, with no decay applied
+- **Batch Size**: 2, allowing efficient updates while leveraging small batches of data
+- **Regularization**: L2 regularization with a lambda value of 0.0005
 
 #### Noise Handling and Reconstruction
 
@@ -55,15 +56,28 @@ The RBM learns robust feature representations in the hidden layer. During traini
 
 ### Reconstruction Error
 
-The reconstruction error was monitored over ________ epochs. The error decreased rapidly during the initial epochs and stabilized at ________, indicating effective learning and convergence.
+The reconstruction error was monitored over **1250 epochs**. The error decreased rapidly during the initial epochs and stabilized at **0.3260** for a noise level of **0.0**, indicating effective learning and convergence.
 
 ### Reconstruction Accuracy
 
-The RBM's accuracy in reconstructing noisy images was evaluated using a Hamming distance threshold of ____________. The accuracy was __________, meaning the RBM correctly reconstructed ________ out of 8 numerals.
+### Reconstruction Accuracy
 
-| Noise Level (%) | Reconstruction Accuracy (%) |
-|------------------|-----------------------------|
-| ____                | ________                      |
+The RBM's accuracy in reconstructing noisy images was evaluated using a **Hamming distance threshold**. The accuracy was **100%** for noise levels up to **0.3%**, meaning the RBM correctly reconstructed all 8 numerals. However, accuracy dropped significantly for higher noise levels.
+
+#### Accuracy Table
+
+| **Noise Level (%)** | **Prediction Accuracy (%)** |
+|----------------------|-----------------------------|
+| 0.0                  | 100.0                       |
+| 0.1                  | 100.0                       |
+| 0.2                  | 100.0                       |
+| 0.3                  | 100.0                       |
+| 0.4                  | 12.5                        |
+| 0.5                  | 37.5                        |
+| 0.6                  | 37.5                        |
+| 0.7                  | 25.0                        |
+| 0.8                  | 37.5                        |
+| 0.9                  | 12.5                        |
 
 ### Visualization
 
@@ -77,30 +91,43 @@ Below are examples of original, noisy, and reconstructed images:
 
 ### Computational Efficiency
 
-| Parameter          | Impact on Performance                          |
-|---------------------|-----------------------------------------------|
-| **Hidden Units**    | Increasing hidden units improved accuracy but increased training time. |
-| **Learning Rate**   | Higher rates sped up training but caused instability. |
-| **Batch Size**      | Smaller batches improved generalization but slowed training. |
-| **Noise Level**     | Higher noise levels reduced reconstruction accuracy. |
+## Computational Efficiency
 
-- **Training Time**: The RBM required approximately ________ minutes for ________ epochs.
-- **Impact of Hyperparameters**:
-  - Increasing the number of hidden units improved reconstruction accuracy but increased training time.
-  - More epochs led to better convergence, but the reconstruction error stabilized after ________ epochs.
+### Parameter Impact on Performance
+
+| **Parameter**       | **Impact on Performance**                                                                 |
+|----------------------|------------------------------------------------------------------------------------------|
+| **Hidden Units**     | Increasing hidden units improved accuracy but increased training time.                   |
+| **Learning Rate**    | Higher rates sped up training but caused instability.                                    |
+| **Batch Size**       | Smaller batches improved generalization but slowed training.                            |
+| **Noise Level**      | Higher noise levels reduced reconstruction accuracy.                                     |
+
+### Training Time
+
+- The RBM required approximately **0.0004 seconds per epoch**, totaling **~0.5 seconds** for **1250 epochs**.
+
+### Impact of Hyperparameters
+
+- **Hidden Units**: Increasing the number of hidden units improved reconstruction accuracy but increased training time.
+- **Epochs**: More epochs led to better convergence, but the reconstruction error stabilized after **1000 epochs**.
+- **Learning Rate**: A balanced learning rate ensured faster convergence without instability.
+- **Batch Size**: Smaller batch sizes enhanced generalization but required more iterations for training.
+- **Noise Level**: Higher noise levels significantly impacted reconstruction accuracy, as shown in the accuracy table.
+
+## Strengths and Weaknesses
 
 ## Strengths and Weaknesses
 
 ### Strengths
 
-- **Handling Moderate Noise**: The RBM effectively reconstructed images with low noise levels (________%).
+- **Handling Moderate Noise**: The RBM effectively reconstructed images with low noise levels (up to **0.3% noise**).
 - **Feature Learning**: The hidden layer captured meaningful latent features, enabling robust reconstructions.
 - **Fast Convergence**: The reconstruction error stabilized quickly during training.
 
 ### Weaknesses
 
-- **High Noise Levels**: The RBM struggled to reconstruct images with higher noise levels in earlier experiments.
-- **Limited Generalization**: With only 8 training exemplars, the RBM's ability to generalize to unseen noisy inputs is limited.
+- **High Noise Levels**: The RBM struggled to reconstruct images with higher noise levels (e.g., **0.4% and above**).
+- **Limited Generalization**: With only **8 training exemplars**, the RBM's ability to generalize to unseen noisy inputs is limited.
 - **Scalability**: The RBM's performance may degrade when applied to larger images or more complex datasets.
 
 ## Future Improvements
