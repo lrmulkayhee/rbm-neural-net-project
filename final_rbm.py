@@ -531,6 +531,6 @@ if __name__ == "__main__":
     # Summarize results
     logger.info("Summary of Results:")
     logger.info(f"Average Reconstruction Error: {np.mean(errors):.4f}")
-    logger.info(f"Average Prediction Accuracy: {np.mean(prediction_accuracies):.2f}%")
+    logger.info(f"Average Reconstruction Accuracy: {np.mean(prediction_accuracies):.2f}%")
     logger.info(f"Average Reconstruction Variance: {np.mean(reconstruction_variances):.4f}")
     logger.info(f"Average Free Energy Gap: {np.mean(free_energy_gaps):.4f}")
