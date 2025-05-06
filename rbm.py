@@ -290,6 +290,41 @@ def hamming_distance(a, b):
     """
     return np.sum(a != b)
 
+def get_accuracy(data, reconstructed_data, threshold=30):
+    correct_reconstructions = 0
+    for i in range(len(data)):
+        distance = hamming_distance(data[i], reconstructed_data[i])
+        if distance <= threshold:
+            correct_reconstructions += 1
+
+    accuracy = correct_reconstructions / len(data) * 100
+    return accuracy
+
+def calculate_var(data, reconstructed):
+    """Calculate the mean squared error between original and reconstructed data."""
+    return np.var((data - reconstructed) ** 2)
+
+def calc_free_energy(v, W, vbias, hbias):
+    """
+    Compute the free energy of visible vector(s) v in an RBM.
+
+    Parameters:
+    - v: shape (batch_size, n_visible)
+    - W: shape (n_visible, n_hidden)
+    - vbias: shape (n_visible,)
+    - hbias: shape (n_hidden,)
+
+    Returns:
+    - Free energy for each sample in the batch, shape (batch_size,)
+    """
+    linear_term = np.dot(v, vbias)
+    hidden_term = np.dot(v, W) + hbias  # shape: (batch_size, n_hidden)
+    hidden_term_logsum = np.sum(np.log1p(np.exp(hidden_term)), axis=1)  # log(1 + exp(x))
+    return -linear_term - hidden_term_logsum
+
+def calc_free_energy_gap(v, W, vbias, hbias):
+    energies = calc_free_energy(v, W, vbias, hbias)
+    return np.max(energies) - np.min(energies)
 
 if __name__ == "__main__":
     parser = ArgumentParser()
@@ -298,11 +333,11 @@ if __name__ == "__main__":
     parser.add_argument('--n_visible', type=int, default=100)
     parser.add_argument('--n_hidden', type=int, default=150)
     parser.add_argument('--learning_rate', type=float, default=0.1)
-    parser.add_argument('--n_epochs', type=int, default=1000)
-    parser.add_argument('--batch_size', type=int, default=4)
+    parser.add_argument('--n_epochs', type=int, default=1250)
+    parser.add_argument('--batch_size', type=int, default=2)
     parser.add_argument('-o', '--output', default=None, type=str, help="Output for the metrics")
     parser.add_argument('--activation', default='sigmoid', choices=['relu', 'leaky', 'sigmoid', 'tanh'])
-    parser.add_argument('--regularization', default='normal', choices=['normal', 'l1', 'l2'])
+    parser.add_argument('--regularization', default='l2', choices=['normal', 'l1', 'l2'])
     parser.add_argument('--reg_lambda', default=0.001, type=float)
 
     opts = parser.parse_args()
@@ -350,6 +385,32 @@ if __name__ == "__main__":
 
     plt.tight_layout()
     plt.show()
+
+    # Calculate and display reconstruction error
+    reconstruction_error = calculate_reconstruction_error(data, reconstructed_data)
+    logger.info(f"Reconstruction Error: {reconstruction_error:.4f}")
+
+    # Evaluate accuracy using Hamming distance
+    accuracy = get_accuracy(data, reconstructed_data)
+    logger.info(f"Accuracy: {accuracy:.2f}%")
+
+    # Evaluate the variance
+    variance = calculate_var(data, reconstructed_data)
+    logger.info(f"Variance: {variance}")
+
+    # Evaluate the free energy gap
+    free_energy_gap = calc_free_energy_gap(data, rbm.weights,
+                                          rbm.visible_bias, rbm.hidden_bias)
+
+    for i in range(len(data)):
+        error = np.mean((data[i] - reconstructed_data[i]) ** 2)
+        logger.info(f"Reconstruction error for sample {i}: {error:.4f}")
+
+    for i in range(len(data)):
+        logger.info(f"Original index {i}:")
+        logger.info(f"Original:\n{data[i].reshape(10, 10)}")
+        logger.info(f"Noisy:\n{noisy_data[i].reshape(10, 10)}")
+        logger.info(f"Reconstructed:\n{reconstructed_data[i].reshape(10, 10)}")
 
     # Calculate reconstruction error
 reconstruction_error = calculate_reconstruction_error(data, reconstructed_data)
