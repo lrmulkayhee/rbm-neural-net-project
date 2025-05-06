@@ -353,13 +353,45 @@ if __name__ == "__main__":
     plt.show()
 
     # Calculate reconstruction error
-    reconstruction_error = calculate_reconstruction_error(data, reconstructed_data)
-    logger.info(f"Reconstruction Error: {reconstruction_error:.4f}")
+reconstruction_error = calculate_reconstruction_error(data, reconstructed_data)
+logger.info(f"Reconstruction Error: {reconstruction_error:.4f}")
 
-    # Evaluate accuracy using Hamming distance
-    threshold = 30
-    correct_reconstructions = sum(
-        hamming_distance(data[i], reconstructed_data[i]) <= threshold for i in range(len(data))
-    )
-    accuracy = correct_reconstructions / len(data) * 100
-    logger.info(f"Accuracy: {accuracy:.2f}%")
+# Evaluate accuracy using Hamming distance
+threshold = 30
+correct_reconstructions = sum(
+    hamming_distance(data[i], reconstructed_data[i]) <= threshold for i in range(len(data))
+)
+accuracy = correct_reconstructions / len(data) * 100
+logger.info(f"Accuracy: {accuracy:.2f}%")
+
+# Assign predicted labels based on the closest original numeral
+true_labels = np.arange(len(data))  # True labels for the original numerals (0-7)
+predicted_labels = []
+
+for reconstructed in reconstructed_data:
+    distances = [hamming_distance(reconstructed, original) for original in data]
+    predicted_labels.append(np.argmin(distances))  # Label of the closest numeral
+
+# Calculate prediction accuracy
+correct_predictions = sum(true_labels[i] == predicted_labels[i] for i in range(len(true_labels)))
+prediction_accuracy = correct_predictions / len(true_labels) * 100
+logger.info(f"Prediction Accuracy: {prediction_accuracy:.2f}%")
+
+# Visualize results with true and predicted labels
+fig, axes = plt.subplots(3, 8, figsize=(15, 8))
+for i in range(8):
+    axes[0, i].imshow(data[i].reshape(10, 10), cmap='gray')
+    axes[0, i].set_title(f"Original: {true_labels[i]}")
+    axes[0, i].axis('off')
+
+    axes[1, i].imshow(noisy_data[i].reshape(10, 10), cmap='gray')
+    axes[1, i].set_title("Noisy")
+    axes[1, i].axis('off')
+
+    axes[2, i].imshow(reconstructed_data[i].reshape(10, 10), cmap='gray')
+    axes[2, i].set_title(f"Reconstructed: {predicted_labels[i]}")
+    axes[2, i].axis('off')
+
+plt.tight_layout()
+plt.show()
+
