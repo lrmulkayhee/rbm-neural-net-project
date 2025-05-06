@@ -4,14 +4,22 @@ import numpy as np
 import matplotlib.pyplot as plt
 from argparse import ArgumentParser
 
+# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("")
 formatter = logging.Formatter('%(message)s')
 
 class RestrictedBoltzmannMachine:
+    """
+    A class representing a Restricted Boltzmann Machine (RBM).
+    """
+
     def __init__(self, n_visible, n_hidden, learning_rate=0.1, n_epochs=1000,
                  batch_size=10, decay_rate=0.99, activation='sigmoid',
                  regularization='normal', reg_lambda=0.001):
+        """
+        Initialize the RBM with the given parameters.
+        """
         self.n_visible = n_visible
         self.n_hidden = n_hidden
         self.learning_rate = learning_rate
@@ -19,6 +27,7 @@ class RestrictedBoltzmannMachine:
         self.batch_size = batch_size
         self.decay_rate = decay_rate
 
+        # Activation functions
         self.activation_fn = {
             'relu': self.relu,
             'leaky': self.leaky_relu,
@@ -27,6 +36,7 @@ class RestrictedBoltzmannMachine:
         }
         self.activation = self.activation_fn[activation]
 
+        # Regularization functions
         regularization_fn = {
             'normal': np.vectorize(lambda x: 0),
             'l1': np.vectorize(lambda x: np.abs(x)),
@@ -40,59 +50,66 @@ class RestrictedBoltzmannMachine:
         self.visible_bias = np.zeros(n_visible)
         self.hidden_bias = np.zeros(n_hidden)
 
+    # Activation functions
     def relu(self, x):
-        """ReLU activation function."""
         return np.maximum(x, 0)
-    
+
     def leaky_relu(self, x, a=0.01):
-        """Leaky ReLU activation function"""
-        internal_func = np.vectorize(lambda val: val if val > 0 else a*val)
-        return internal_func(x)
+        return np.where(x > 0, x, a * x)
 
     def sigmoid(self, x):
-        """Sigmoid activation function."""
         return 1 / (1 + np.exp(-x))
-    
+
     def tanh(self, x):
-        """Tanh activation function."""
         return np.tanh(x)
 
     def sample_probabilities(self, probs):
-        """Sample binary states based on probabilities."""
+        """
+        Sample binary states based on probabilities.
+        """
         return (np.random.rand(*probs.shape) < probs).astype(np.float32)
 
-    def contrastive_divergence_with_leaky_relu(self, data):
-        """Perform one step of adaptive contrastive divergence using ReLU activations."""
+    def contrastive_divergence(self, data):
+        """
+        Perform one step of contrastive divergence to update weights and biases.
+        """
         # Positive phase
-        pos_hidden_probs = self.activation(np.dot(data, self.weights) + self.hidden_bias)
+        pos_hidden_activations = np.dot(data, self.weights) + self.hidden_bias
+        pos_hidden_probs = self.sigmoid(pos_hidden_activations)
         pos_hidden_states = self.sample_probabilities(pos_hidden_probs)
         pos_associations = np.dot(data.T, pos_hidden_probs)
 
         # Negative phase
-        neg_visible_probs = self.activation(np.dot(pos_hidden_states, self.weights.T) + self.visible_bias)
-        neg_hidden_probs = self.activation(np.dot(neg_visible_probs, self.weights) + self.hidden_bias)
+        neg_visible_activations = np.dot(pos_hidden_states, self.weights.T) + self.visible_bias
+        neg_visible_probs = self.sigmoid(neg_visible_activations)
+        neg_hidden_activations = np.dot(neg_visible_probs, self.weights) + self.hidden_bias
+        neg_hidden_probs = self.sigmoid(neg_hidden_activations)
         neg_associations = np.dot(neg_visible_probs.T, neg_hidden_probs)
 
         # Update weights and biases
-        self.weights += self.learning_rate * (pos_associations - neg_associations) / data.shape[0]
+        self.weights += self.learning_rate * (
+            (pos_associations - neg_associations) / data.shape[0] - self.reg_lambda * self.weights
+        )
         self.visible_bias += self.learning_rate * np.mean(data - neg_visible_probs, axis=0)
         self.hidden_bias += self.learning_rate * np.mean(pos_hidden_probs - neg_hidden_probs, axis=0)
 
-
     def train(self, data):
-        """Train the RBM using the provided data."""
+        """
+        Train the RBM using the provided data.
+        """
         total_times = []
         errors = []
+
         for epoch in range(self.n_epochs):
             np.random.shuffle(data)
             start_time = time.time()
+
             for i in range(0, data.shape[0], self.batch_size):
                 batch = data[i:i + self.batch_size]
-                self.contrastive_divergence_with_leaky_relu(batch)
+                self.contrastive_divergence(batch)
 
             elapsed_time = time.time() - start_time
             error = np.mean((data - self.reconstruct(data)) ** 2)
-
             error += self.reg_lambda * np.sum(self.regularization(self.weights))
 
             total_times.append(elapsed_time)
@@ -101,20 +118,23 @@ class RestrictedBoltzmannMachine:
             # Apply learning rate decay
             self.learning_rate *= self.decay_rate
 
-            # Calculate reconstruction error
             if (epoch + 1) % 100 == 0:
                 logger.info(f"Epoch {epoch + 1}/{self.n_epochs}, Reconstruction Error: {error:.4f}, Elapsed Time: {elapsed_time:.4f}")
 
         logger.info(f"Average Error: {np.mean(errors)} Average Epoch Time: {np.mean(total_times)}")
 
     def reconstruct(self, data):
-        """Reconstruct visible units from hidden units."""
+        """
+        Reconstruct visible units from hidden units.
+        """
         hidden_probs = self.activation(np.dot(data, self.weights) + self.hidden_bias)
         visible_probs = self.activation(np.dot(hidden_probs, self.weights.T) + self.visible_bias)
         return visible_probs
 
     def visualize_weights(self):
-        """Visualize weights as a heatmap."""
+        """
+        Visualize weights as a heatmap.
+        """
         plt.figure(figsize=(10, 8))
         plt.imshow(self.weights, cmap='viridis', aspect='auto')
         plt.colorbar(label="Weight Magnitude")
@@ -123,138 +143,151 @@ class RestrictedBoltzmannMachine:
         plt.ylabel("Visible Units")
         plt.show()
 
+
 def generate_numerals():
-    """Generate 10x10 binary arrays representing the digits 0-7."""
+    """
+    Generate 10x10 binary arrays representing the digits 0-7.
+    """
     numerals = [
-        # Digit 0
-        np.array([
-            [0, 1, 1, 1, 1, 0, 0, 0, 0, 0],
-            [1, 1, 0, 0, 1, 1, 0, 0, 0, 0],
-            [1, 1, 0, 0, 1, 1, 0, 0, 0, 0],
-            [1, 1, 0, 0, 1, 1, 0, 0, 0, 0],
-            [1, 1, 0, 0, 1, 1, 0, 0, 0, 0],
-            [1, 1, 0, 0, 1, 1, 0, 0, 0, 0],
-            [1, 1, 0, 0, 1, 1, 0, 0, 0, 0],
-            [0, 1, 1, 1, 1, 0, 0, 0, 0, 0],
+        # Digit representations (0-7)
+        # Each digit is a 10x10 binary array
+            # Digit 0
+            np.array([
+            [0, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+            [1, 1, 0, 0, 0, 0, 0, 1, 1, 0],
+            [1, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+            [1, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+            [1, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+            [1, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+            [1, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+            [1, 1, 0, 0, 0, 0, 0, 1, 1, 0],
+            [0, 1, 1, 1, 1, 1, 1, 1, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            ]),
+            # Digit 1
+            np.array([
+            [0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
+            [0, 0, 1, 1, 1, 1, 0, 0, 0, 0],
+            [0, 1, 0, 1, 1, 1, 0, 0, 0, 0],
+            [0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
+            [0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
+            [0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
+            [0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
+            [0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
+            [0, 0, 1, 1, 1, 1, 1, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        ]),
-        # Digit 1
-        np.array([
-            [0, 0, 1, 1, 0, 0, 0, 0, 0, 0],
-            [0, 1, 1, 1, 1, 0, 0, 0, 0, 0],
-            [0, 0, 0, 1, 1, 0, 0, 0, 0, 0],
-            [0, 0, 0, 1, 1, 0, 0, 0, 0, 0],
-            [0, 0, 0, 1, 1, 0, 0, 0, 0, 0],
-            [0, 0, 0, 1, 1, 0, 0, 0, 0, 0],
-            [0, 0, 0, 1, 1, 0, 0, 0, 0, 0],
-            [0, 1, 1, 1, 1, 1, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        ]),
-        # Digit 2
-        np.array([
-            [0, 1, 1, 1, 1, 0, 0, 0, 0, 0],
-            [1, 1, 0, 0, 1, 1, 0, 0, 0, 0],
+            ]),
+            # Digit 2
+            np.array([
+            [0, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+            [1, 1, 0, 0, 0, 0, 0, 1, 1, 0],
+            [0, 0, 0, 0, 0, 0, 0, 1, 1, 0],
+            [0, 0, 0, 0, 0, 0, 1, 1, 0, 0],
+            [0, 0, 0, 0, 0, 1, 1, 0, 0, 0],
             [0, 0, 0, 0, 1, 1, 0, 0, 0, 0],
             [0, 0, 0, 1, 1, 0, 0, 0, 0, 0],
             [0, 0, 1, 1, 0, 0, 0, 0, 0, 0],
-            [0, 1, 1, 0, 0, 0, 0, 0, 0, 0],
-            [1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-            [1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        ]),
-        # Digit 3
-        np.array([
-            [0, 1, 1, 1, 1, 0, 0, 0, 0, 0],
-            [1, 1, 0, 0, 1, 1, 0, 0, 0, 0],
-            [0, 0, 0, 0, 1, 1, 0, 0, 0, 0],
-            [0, 0, 0, 1, 1, 0, 0, 0, 0, 0],
-            [0, 0, 1, 1, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 1, 1, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 1, 1, 0, 0, 0, 0],
-            [1, 1, 0, 0, 1, 1, 0, 0, 0, 0],
-            [0, 1, 1, 1, 1, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        ]),
-        # Digit 4
-        np.array([
-            [0, 0, 0, 1, 1, 0, 0, 0, 0, 0],
-            [0, 0, 1, 1, 1, 0, 0, 0, 0, 0],
-            [0, 1, 1, 0, 1, 0, 0, 0, 0, 0],
-            [1, 1, 0, 0, 1, 0, 0, 0, 0, 0],
-            [1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
-            [0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        ]),
-        # Digit 5
-        np.array([
-            [1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
-            [1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-            [1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-            [1, 1, 1, 1, 1, 0, 0, 0, 0, 0],
+            ]),
+            # Digit 3
+            np.array([
+            [0, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+            [1, 1, 0, 0, 0, 0, 0, 1, 1, 0],
+            [0, 0, 0, 0, 0, 0, 0, 1, 1, 0],
+            [0, 0, 0, 0, 0, 1, 1, 0, 0, 0],
             [0, 0, 0, 0, 1, 1, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 1, 1, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 1, 1, 0, 0],
-            [1, 1, 0, 0, 1, 1, 0, 0, 0, 0],
-            [0, 1, 1, 1, 1, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        ]),
-        # Digit 6
-        np.array([
-            [0, 0, 1, 1, 1, 1, 0, 0, 0, 0],
-            [0, 1, 1, 0, 0, 0, 0, 0, 0, 0],
-            [1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-            [1, 1, 1, 1, 1, 0, 0, 0, 0, 0],
-            [1, 1, 0, 0, 1, 1, 0, 0, 0, 0],
-            [1, 1, 0, 0, 0, 1, 1, 0, 0, 0],
-            [1, 1, 0, 0, 0, 0, 1, 1, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 1, 1, 0],
+            [0, 0, 0, 0, 0, 0, 0, 1, 1, 0],
+            [1, 1, 0, 0, 0, 0, 0, 1, 1, 0],
+            [0, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+            ]),
+            # Digit 4
+            np.array([
+            [0, 0, 0, 0, 1, 1, 1, 0, 0, 0],
+            [0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
+            [0, 0, 1, 1, 0, 1, 1, 0, 0, 0],
             [0, 1, 1, 0, 0, 1, 1, 0, 0, 0],
-            [0, 0, 1, 1, 1, 1, 0, 0, 0, 0],
+            [1, 1, 0, 0, 0, 1, 1, 0, 0, 0],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+            [0, 0, 0, 0, 0, 1, 1, 0, 0, 0],
+            [0, 0, 0, 0, 0, 1, 1, 0, 0, 0],
+            [0, 0, 0, 0, 0, 1, 1, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        ]),
-        # Digit 7
-        np.array([
-            [1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
+            ]),
+            # Digit 5
+            np.array([
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+            [1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+            [1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+            [1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 1, 1, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+            [1, 1, 0, 0, 0, 0, 0, 1, 1, 0],
+            [0, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+            ]),
+            # Digit 6
+            np.array([
+            [0, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+            [1, 1, 0, 0, 0, 0, 0, 1, 1, 0],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+            [1, 1, 0, 0, 0, 0, 0, 1, 1, 0],
+            [1, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+            [1, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+            [1, 1, 0, 0, 0, 0, 0, 1, 1, 0],
+            [0, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+            ]),
+            # Digit 7
+            np.array([
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+            [0, 0, 0, 0, 0, 0, 0, 1, 1, 0],
+            [0, 0, 0, 0, 0, 0, 1, 1, 0, 0],
+            [0, 0, 0, 0, 0, 1, 1, 0, 0, 0],
             [0, 0, 0, 0, 1, 1, 0, 0, 0, 0],
             [0, 0, 0, 1, 1, 0, 0, 0, 0, 0],
             [0, 0, 1, 1, 0, 0, 0, 0, 0, 0],
             [0, 1, 1, 0, 0, 0, 0, 0, 0, 0],
             [1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-            [1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-            [1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-            [1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        ]),
+            ]),
     ]
 
     # Flatten each 10x10 array into a 1D array of size 100
-    flattened_numerals = [numeral.flatten() for numeral in numerals]
-    return np.array(flattened_numerals)
+    flatten_numerals = [numeral.flatten() for numeral in numerals]
+    return np.array(flatten_numerals)
+
 
 def add_custom_noise(data, noise_level=0.2):
-    noisy_data = data.copy()
+    """
+    Add custom noise to the data by flipping bits with a given probability.
+    """
     noise = np.random.binomial(1, noise_level, data.shape)
-    noisy_data = np.abs(noisy_data - noise)  # Flip bits based on noise
-    return noisy_data
+    return np.abs(data - noise)
 
-# Function to binarize the reconstructed data to ensure black and white output
+
 def binarize_data(data, threshold=0.5):
-    """Convert probabilities to binary values (0 or 1) based on a threshold."""
+    """
+    Convert probabilities to binary values (0 or 1) based on a threshold.
+    """
     return (data >= threshold).astype(np.float32)
 
-# Function to calculate reconstruction error
+
 def calculate_reconstruction_error(original, reconstructed):
-    """Calculate the mean squared error between original and reconstructed data."""
+    """
+    Calculate the mean squared error between original and reconstructed data.
+    """
     return np.mean((original - reconstructed) ** 2)
 
-# Function to calculate Hamming distance
+
 def hamming_distance(a, b):
-    """Calculate the Hamming distance between two binary arrays."""
+    """
+    Calculate the Hamming distance between two binary arrays.
+    """
     return np.sum(a != b)
 
 def get_accuracy(data, reconstructed_data, threshold=30):
@@ -293,10 +326,10 @@ def calc_free_energy_gap(v, W, vbias, hbias):
     energies = calc_free_energy(v, W, vbias, hbias)
     return np.max(energies) - np.min(energies)
 
-
 if __name__ == "__main__":
     parser = ArgumentParser()
 
+    # Command-line arguments
     parser.add_argument('--n_visible', type=int, default=100)
     parser.add_argument('--n_hidden', type=int, default=150)
     parser.add_argument('--learning_rate', type=float, default=0.1)
@@ -314,14 +347,11 @@ if __name__ == "__main__":
         fileHandler.setFormatter(formatter)
         logger.addHandler(fileHandler)
 
-
+    # Generate data and add noise
     data = generate_numerals()
-    logger.info(f"Shape of data: {data.shape}")  # Should print (8, 100)
+    noisy_data = add_custom_noise(data, noise_level=0.01)
 
-    noisy_data = add_custom_noise(data, noise_level=0.01)  # Reduced noise level
-    logger.info(f"Shape of noisy data: {noisy_data.shape}")  # Should also be (8, 100)
-
-    # Initialize and train RBM with updated parameters
+    # Initialize and train RBM
     rbm = RestrictedBoltzmannMachine(
         n_visible=opts.n_visible,
         n_hidden=opts.n_hidden,
@@ -335,7 +365,7 @@ if __name__ == "__main__":
     rbm.train(noisy_data)
     rbm.visualize_weights()
 
-    # Visualize original, noisy, and reconstructed data
+    # Reconstruct and visualize data
     reconstructed_data = rbm.reconstruct(noisy_data)
     reconstructed_data = binarize_data(reconstructed_data)
 
@@ -381,3 +411,47 @@ if __name__ == "__main__":
         logger.info(f"Original:\n{data[i].reshape(10, 10)}")
         logger.info(f"Noisy:\n{noisy_data[i].reshape(10, 10)}")
         logger.info(f"Reconstructed:\n{reconstructed_data[i].reshape(10, 10)}")
+
+    # Calculate reconstruction error
+reconstruction_error = calculate_reconstruction_error(data, reconstructed_data)
+logger.info(f"Reconstruction Error: {reconstruction_error:.4f}")
+
+# Evaluate accuracy using Hamming distance
+threshold = 30
+correct_reconstructions = sum(
+    hamming_distance(data[i], reconstructed_data[i]) <= threshold for i in range(len(data))
+)
+accuracy = correct_reconstructions / len(data) * 100
+logger.info(f"Accuracy: {accuracy:.2f}%")
+
+# Assign predicted labels based on the closest original numeral
+true_labels = np.arange(len(data))  # True labels for the original numerals (0-7)
+predicted_labels = []
+
+for reconstructed in reconstructed_data:
+    distances = [hamming_distance(reconstructed, original) for original in data]
+    predicted_labels.append(np.argmin(distances))  # Label of the closest numeral
+
+# Calculate prediction accuracy
+correct_predictions = sum(true_labels[i] == predicted_labels[i] for i in range(len(true_labels)))
+prediction_accuracy = correct_predictions / len(true_labels) * 100
+logger.info(f"Prediction Accuracy: {prediction_accuracy:.2f}%")
+
+# Visualize results with true and predicted labels
+fig, axes = plt.subplots(3, 8, figsize=(15, 8))
+for i in range(8):
+    axes[0, i].imshow(data[i].reshape(10, 10), cmap='gray')
+    axes[0, i].set_title(f"Original: {true_labels[i]}")
+    axes[0, i].axis('off')
+
+    axes[1, i].imshow(noisy_data[i].reshape(10, 10), cmap='gray')
+    axes[1, i].set_title("Noisy")
+    axes[1, i].axis('off')
+
+    axes[2, i].imshow(reconstructed_data[i].reshape(10, 10), cmap='gray')
+    axes[2, i].set_title(f"Reconstructed: {predicted_labels[i]}")
+    axes[2, i].axis('off')
+
+plt.tight_layout()
+plt.show()
+
