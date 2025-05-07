@@ -107,7 +107,7 @@ The free energy gap, which measures the RBM's ability to distinguish between noi
 
 Below are examples of original, noisy, and reconstructed images:
 
-***INSERT PICS HERE***
+![noise image](./images/noise.png)
 
 1. **Original Images**: Clean numeral images without noise.
 2. **Noisy Images**: Input images with varying noise levels.
