@@ -11,12 +11,10 @@ The purpose of this project is to reconstruct noisy numeral images using an RBM.
 ## Key Results
 
 - **Prediction Accuracy**: Achieved a prediction accuracy of **100%** for noisy numeral images with a noise level of **0.0% to 0.3%**.
-- **Reconstruction Error**: The reconstruction error stabilized at **0.3260** during training for a noise level of **0.0**, indicating effective learning.
-- **Visual Inspection**: Reconstructed images demonstrated that the RBM successfully recovered key numeral patterns for low noise levels, though performance degraded at higher noise levels.
-
-## Significance
-
-This work highlights the potential of RBMs for image denoising tasks, contributing to neural network research. The results demonstrate the RBM's ability to learn meaningful latent features, making it a valuable tool for preprocessing and enhancing visual data in computer vision systems.
+- **Reconstruction Accuracy**: Achieved an average prediction accuracy of **72.50%** across all noise levels.
+- **Reconstruction Error**: The average reconstruction error was **0.4841**, indicating effective learning overall.
+- **Reconstruction Variance**: The average variance in reconstruction was **0.2414**, showcasing consistent performance across noise levels.
+- **Free Energy Gap**: The average free energy gap was **40.7754**, reflecting the RBM's ability to differentiate between noisy and clean data.
 
 ## Problem Description and Network Design
 
@@ -38,15 +36,13 @@ The Restricted Boltzmann Machine (RBM) used in this project has:
 
 #### Training Methodology
 
-### Training Methodology
-
 The RBM is trained using the **Contrastive Divergence (CD)** algorithm, which approximates the gradient of the log-likelihood. Key training parameters include:
 
 - **Activation Function**: Sigmoid
 - **Number of Epochs**: 1250 epochs to ensure convergence
 - **Learning Rate**: 0.1, with no decay applied
 - **Batch Size**: 2, allowing efficient updates while leveraging small batches of data
-- **Regularization**: L2 regularization with a lambda value of 0.0005
+- **Regularization**: no regularization 
 
 #### Noise Handling and Reconstruction
 
@@ -56,13 +52,24 @@ The RBM learns robust feature representations in the hidden layer. During traini
 
 ### Reconstruction Error
 
-The reconstruction error was monitored over **1250 epochs**. The error decreased rapidly during the initial epochs and stabilized at **0.3260** for a noise level of **0.0**, indicating effective learning and convergence.
+The reconstruction error was monitored over **1250 epochs** for various noise levels. Below are the final reconstruction errors for each noise level:
+
+| **Noise Level (%)** | **Reconstruction Error** |
+|----------------------|--------------------------|
+| 0.0                  | 0.3240                   |
+| 0.1                  | 0.3481                   |
+| 0.2                  | 0.3554                   |
+| 0.3                  | 0.3608                   |
+| 0.4                  | 0.3728                   |
+| 0.5                  | 0.3791                   |
+| 0.6                  | 0.3871                   |
+| 0.7                  | 0.3914                   |
+| 0.8                  | 0.3836                   |
+| 0.9                  | 0.3838                   |
 
 ### Reconstruction Accuracy
 
-### Reconstruction Accuracy
-
-The RBM's accuracy in reconstructing noisy images was evaluated using a **Hamming distance threshold**. The accuracy was **100%** for noise levels up to **0.3%**, meaning the RBM correctly reconstructed all 8 numerals. However, accuracy dropped significantly for higher noise levels.
+The RBM's accuracy in reconstructing noisy images was evaluated using a **Hamming distance threshold**. The accuracy was **100%** for noise levels up to **0.3%**, but performance degraded at higher noise levels.
 
 #### Accuracy Table
 
@@ -72,12 +79,29 @@ The RBM's accuracy in reconstructing noisy images was evaluated using a **Hammin
 | 0.1                  | 100.0                       |
 | 0.2                  | 100.0                       |
 | 0.3                  | 100.0                       |
-| 0.4                  | 12.5                        |
-| 0.5                  | 37.5                        |
-| 0.6                  | 37.5                        |
-| 0.7                  | 25.0                        |
-| 0.8                  | 37.5                        |
-| 0.9                  | 12.5                        |
+| 0.4                  | 87.5                        |
+| 0.5                  | 75.0                        |
+| 0.6                  | 75.0                        |
+| 0.7                  | 12.5                        |
+| 0.8                  | 50.0                        |
+| 0.9                  | 25.0                        |
+
+### Free Energy Gap
+
+The free energy gap, which measures the RBM's ability to distinguish between noisy and clean data, was computed for each noise level:
+
+| **Noise Level (%)** | **Free Energy Gap** |
+|----------------------|---------------------|
+| 0.0                  | 18.0785            |
+| 0.1                  | 38.4666            |
+| 0.2                  | 50.0708            |
+| 0.3                  | 47.3601            |
+| 0.4                  | 23.2003            |
+| 0.5                  | 20.8249            |
+| 0.6                  | 52.0559            |
+| 0.7                  | 37.9430            |
+| 0.8                  | 59.0178            |
+| 0.9                  | 60.7365            |
 
 ### Visualization
 
@@ -86,35 +110,8 @@ Below are examples of original, noisy, and reconstructed images:
 ***INSERT PICS HERE***
 
 1. **Original Images**: Clean numeral images without noise.
-2. **Noisy Images**: Input images with __________% noise.
+2. **Noisy Images**: Input images with varying noise levels.
 3. **Reconstructed Images**: Outputs generated by the RBM.
-
-### Computational Efficiency
-
-## Computational Efficiency
-
-### Parameter Impact on Performance
-
-| **Parameter**       | **Impact on Performance**                                                                 |
-|----------------------|------------------------------------------------------------------------------------------|
-| **Hidden Units**     | Increasing hidden units improved accuracy but increased training time.                   |
-| **Learning Rate**    | Higher rates sped up training but caused instability.                                    |
-| **Batch Size**       | Smaller batches improved generalization but slowed training.                            |
-| **Noise Level**      | Higher noise levels reduced reconstruction accuracy.                                     |
-
-### Training Time
-
-- The RBM required approximately **0.0004 seconds per epoch**, totaling **~0.5 seconds** for **1250 epochs**.
-
-### Impact of Hyperparameters
-
-- **Hidden Units**: Increasing the number of hidden units improved reconstruction accuracy but increased training time.
-- **Epochs**: More epochs led to better convergence, but the reconstruction error stabilized after **1000 epochs**.
-- **Learning Rate**: A balanced learning rate ensured faster convergence without instability.
-- **Batch Size**: Smaller batch sizes enhanced generalization but required more iterations for training.
-- **Noise Level**: Higher noise levels significantly impacted reconstruction accuracy, as shown in the accuracy table.
-
-## Strengths and Weaknesses
 
 ## Strengths and Weaknesses
 
@@ -150,27 +147,27 @@ Below are examples of original, noisy, and reconstructed images:
 ## Installation
 
 1. Clone the repository:
-   ```bash
-   git clone <repository-url>
-   cd rbm-neural-net-project
-   ```
+     ```bash
+     git clone <repository-url>
+     cd rbm-neural-net-project
+     ```
 
 2. Install the required dependencies:
-    ```bash
-    pip install -r requirements.txt
-    ```
+        ```bash
+        pip install -r requirements.txt
+        ```
 
 ## Usage
 
-1. Run teh RBM script:
-   ```bash
-   python rbm.py
-   ```
+1. Run the RBM script:
+     ```bash
+     python rbm.py
+     ```
 
 2. Optional: Use command-line arguments to customize the RBM's parameters:
-    ```bash
-    python rbm.py --n_visible 100 --n_hidden 150 --learning_rate 0.1 --n_epochs 1000 --batch_size 4
-    ```
+        ```bash
+        python rbm.py --n_visible 100 --n_hidden 150 --learning_rate 0.1 --n_epochs 1000 --batch_size 4
+        ```
 
 3. View the visualizations of the original, noisy, and reconstructed images, as well as the weight heatmap.
 
