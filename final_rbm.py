@@ -441,11 +441,12 @@ if __name__ == "__main__":
     parser.add_argument('--n_visible', type=int, default=100)
     parser.add_argument('--n_hidden', type=int, default=150)
     parser.add_argument('--learning_rate', type=float, default=0.1)
+    parser.add_argument('--decay_rate', type=float, default=0.99)
     parser.add_argument('--n_epochs', type=int, default=1250)
     parser.add_argument('--batch_size', type=int, default=2)
     parser.add_argument('-o', '--output', default=None, type=str, help="Output for the metrics")
     parser.add_argument('--activation', default='sigmoid', choices=['relu', 'leaky', 'sigmoid', 'tanh'])
-    parser.add_argument('--regularization', default='l2', choices=['normal', 'l1', 'l2'])
+    parser.add_argument('--regularization', default='normal', choices=['normal', 'l1', 'l2'])
     parser.add_argument('--reg_lambda', default=0.0005, type=float)
 
     opts = parser.parse_args()
